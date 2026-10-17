@@ -1,8 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { castSignaling } from './server/cast-signaling';
 
 const SHARED_DIR = fileURLToPath(new URL('../shared', import.meta.url));
+/** Written by `npm run phone` while its HTTPS tunnel is up. */
+const PHONE_URL_FILE = fileURLToPath(new URL('./.phone-url', import.meta.url));
 
 export default defineConfig({
   plugins: [
@@ -14,6 +17,21 @@ export default defineConfig({
       name: 'watch-shared',
       configureServer(server) {
         server.watcher.add(SHARED_DIR);
+      },
+    },
+    {
+      // Lets the laptop's start screen show the phone tunnel's QR code.
+      name: 'phone-url',
+      configureServer(server) {
+        server.middlewares.use('/api/phone-url', (_req, res) => {
+          let url = '';
+          try {
+            url = readFileSync(PHONE_URL_FILE, 'utf8').trim();
+          } catch {}
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-store');
+          res.end(JSON.stringify({ url: url || null }));
+        });
       },
     },
   ],

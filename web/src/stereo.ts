@@ -22,6 +22,13 @@ export type StereoLayout = {
   tiltDeg: number;
 };
 
+/** Anything main.ts renders into: the two Cardboard eyes or the single full-screen phone view. */
+export type View = {
+  eyes: Eye[];
+  layout: (l: StereoLayout) => void;
+  eyeSize: () => { width: number; height: number };
+};
+
 export type StereoView = {
   eyes: [Eye, Eye];
   /** Call whenever the viewport or settings change. */
@@ -95,4 +102,27 @@ export function createStereoView(container: HTMLElement, stream: MediaStream | n
   }
 
   return { eyes, layout, eyeSize: () => size };
+}
+
+/**
+ * Phone view: one camera image + HUD filling the screen, held in the hand (no headset).
+ * Same Eye shape as stereo, so the HUD, overlay and projection code are shared. Ignores lens settings.
+ */
+export function createMonoView(container: HTMLElement, stream: MediaStream | null): View {
+  const eye = makeEye(stream);
+  container.replaceChildren(eye.root);
+  let size = { width: 0, height: 0 };
+
+  function layout() {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    Object.assign(eye.root.style, { left: '0px', top: '0px', width: `${W}px`, height: `${H}px`, transform: '' });
+    const dpr = window.devicePixelRatio || 1;
+    eye.ctx.canvas.width = Math.round(W * dpr);
+    eye.ctx.canvas.height = Math.round(H * dpr);
+    eye.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    size = { width: W, height: H };
+  }
+
+  return { eyes: [eye], layout, eyeSize: () => size };
 }

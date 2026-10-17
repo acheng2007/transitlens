@@ -1,47 +1,239 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-  <meta name="theme-color" content="#071014" />
-  <title>TransitLens · Look. Ask. Go.</title>
-  <link rel="stylesheet" href="/src/style.css" />
-</head>
-<body>
-  <div id="start-screen">
-    <header class="brand-bar"><a class="brand" href="/">T<span>TransitLens</span></a><span class="location-tag">GAINESVILLE / RTS</span></header>
-    <main class="launch-shell">
-      <section class="hero">
-        <div class="hero-copy"><p class="eyebrow">YOUR CITY, UNDERSTOOD.</p><h1>Look.<br>Ask.<br><em>Go.</em></h1><p class="hero-description">Point at a bus. Ask where it goes.<br>Let Gemini turn the street into your transit map.</p><div class="capability-tags"><span>Spatial AR</span><span>Voice copilot</span><span>Live transit</span></div></div>
-        <div class="hero-scene" aria-hidden="true"><div class="scene-grid"></div><div class="scene-orbit orbit-one"></div><div class="scene-orbit orbit-two"></div><div class="scene-origin"></div><div class="scene-bus"><span>RTS</span><strong>38</strong><small>LOOK TO SELECT</small></div><div class="scene-voice"><span class="voice-dot"></span>Hey Gemini, get me to Shands.</div><span class="scene-coordinate">29.6465° N &nbsp; 82.3478° W</span></div>
-      </section>
-      <section class="setup-panel">
-        <div class="panel-heading"><div><p class="eyebrow">ENTER TRANSITLENS</p><h2>Choose your view.</h2></div><span id="connection-status" class="connection-status">Checking Gemini…</span></div>
-        <div class="setup-grid">
-          <label>Experience<select id="view-select"><option value="ar">Google Cardboard · immersive</option><option value="handheld">Handheld · full screen</option></select></label>
-          <label>Transit data<select id="data-select"><option value="live">Live Gainesville RTS</option><option value="demo">Showcase demo · synthetic buses</option></select></label>
-          <label>Search radius (km)<input id="radius-input" type="number" min="1" max="400" step="1" inputmode="numeric" placeholder="5 km" /></label>
-          <label>Compass distance (miles)<input id="compass-distance" type="number" min="0.01" step="any" value="1" inputmode="decimal" /></label>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#FAFAF8" />
+    <meta name="description" content="See the Gainesville RTS buses around you, in real time." />
+    <!-- Add to Home Screen: opens full screen like an app (iPhone and Android). -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="TransitLens" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>TransitLens</title>
+    <script>
+      // Apply the saved theme before first paint (main.ts keeps it in sync afterwards).
+      try {
+        var t = (JSON.parse(localStorage.getItem('transitlens-settings-v1') || '{}').theme) || 'system';
+        if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="start-screen">
+      <!-- ============ Home ============ -->
+      <main class="home" id="home">
+        <header class="topbar enter" style="--i: 0">
+          <span class="wordmark">TransitLens</span>
+          <div class="topbar-right">
+            <span class="live-pill" id="live-pill" data-state="connecting" role="status">
+              <span class="live-dot"></span><span class="live-text">Connecting</span>
+            </span>
+            <button class="icon-btn" id="settings-open" aria-label="Settings">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
+            </button>
+          </div>
+        </header>
+
+        <section class="hero enter" style="--i: 1">
+          <p class="eyebrow" id="greeting">Welcome</p>
+          <h1>Explore<br />Gainesville</h1>
+          <p class="lede">See the buses around you, in real time.</p>
+        </section>
+
+        <section class="cta enter" style="--i: 2">
+          <button id="start-btn">
+            <span class="start-label">Enter AR</span>
+            <span class="start-arrow" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            </span>
+          </button>
+          <button id="demo-btn" type="button" class="pill-btn">Explore the demo</button>
+          <div class="segmented" role="radiogroup" aria-label="View">
+            <button class="segment is-selected" role="radio" aria-checked="true" data-mode-view="mobile">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2.5" /><path d="M11 18h2" /></svg>
+              Phone
+            </button>
+            <button class="segment" role="radio" aria-checked="false" data-mode-view="ar">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h13A2.5 2.5 0 0 1 21 8.5v7a2.5 2.5 0 0 1-2.5 2.5H15l-3-3-3 3H5.5A2.5 2.5 0 0 1 3 15.5z" /><circle cx="8" cy="11.5" r="1.8" /><circle cx="16" cy="11.5" r="1.8" /></svg>
+              Cardboard
+            </button>
+          </div>
+          <p id="start-status" role="status"></p>
+        </section>
+
+        <section class="nearby enter" style="--i: 3" aria-labelledby="nearby-title">
+          <div class="section-head">
+            <h2 id="nearby-title">Nearby buses</h2>
+            <span class="section-meta" id="nearby-meta"></span>
+          </div>
+          <div class="nearby-body" id="nearby" data-state="idle">
+            <div class="nearby-empty" id="nearby-empty">
+              <p class="empty-title">Find buses near you</p>
+              <p class="empty-text">Share your location to see live RTS buses around you.</p>
+              <button class="pill-btn" id="nearby-locate">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /></svg>
+                Use my location
+              </button>
+            </div>
+            <div class="bus-rail" id="bus-rail" role="list"></div>
+          </div>
+        </section>
+
+        <section class="phone-link enter" id="phone-link" style="--i: 4" hidden>
+          <div class="qr" aria-hidden="true"></div>
+          <div class="phone-link-text">
+            <h2>Open on your phone</h2>
+            <p class="ready-only">Scan with the iPhone Camera app. For an app icon, tap <b>Share → Add to Home Screen</b>.</p>
+            <p class="phone-url ready-only"></p>
+            <p class="missing-only">Phones need an HTTPS link. In <code>web/</code>, run <code>npm run phone</code> and a QR code appears here.</p>
+          </div>
+        </section>
+      </main>
+
+      <!-- ============ Settings (full-screen sheet) ============ -->
+      <section class="settings" id="settings" aria-label="Settings" hidden>
+        <header class="settings-bar">
+          <span></span>
+          <button class="text-btn" id="settings-done">Done</button>
+        </header>
+        <div class="settings-scroll">
+          <h1 class="settings-title">Settings</h1>
+
+          <h2 class="group-label">Appearance</h2>
+          <div class="group">
+            <div class="row row-stack">
+              <div class="segmented segmented-full" role="radiogroup" aria-label="Appearance">
+                <button class="segment is-selected" role="radio" aria-checked="true" data-theme-choice="system">System</button>
+                <button class="segment" role="radio" aria-checked="false" data-theme-choice="light">Light</button>
+                <button class="segment" role="radio" aria-checked="false" data-theme-choice="dark">Dark</button>
+              </div>
+              <p class="row-help">Applies to this screen and the AR view. System follows your phone's setting.</p>
+            </div>
+          </div>
+
+          <h2 class="group-label">View</h2>
+          <div class="group">
+            <div class="row row-stack">
+              <div class="segmented segmented-full" role="radiogroup" aria-label="View">
+                <button class="segment is-selected" role="radio" aria-checked="true" data-mode-view="mobile">Phone</button>
+                <button class="segment" role="radio" aria-checked="false" data-mode-view="ar">Cardboard</button>
+              </div>
+              <p class="row-help">Phone: hold it up and look around. Cardboard: stereo view in a headset, phone sideways.</p>
+            </div>
+            <label class="row row-stack">
+              <span class="row-label">Data</span>
+              <select id="data-select">
+                <option value="live">Live RTS</option>
+                <option value="demo">Showcase demo</option>
+              </select>
+              <span class="row-help">Demo uses synthetic Gainesville buses. Live never substitutes demo vehicles.</span>
+            </label>
+            <label class="row toggle">
+              <span><span class="row-label">Hey Gemini</span><span class="row-help">Wake phrase and spoken replies.</span></span>
+              <input id="voice-check" type="checkbox" role="switch" checked />
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+            <div class="row">
+              <span class="row-label">Gemini</span>
+              <span class="row-value" id="connection-status">Checking…</span>
+            </div>
+          </div>
+          <!-- The app reads these selects; the segmented controls mirror them. -->
+          <select id="view-select" class="visually-hidden" tabindex="-1" aria-hidden="true">
+            <option value="mobile">Phone</option>
+            <option value="ar">Google Cardboard</option>
+          </select>
+
+          <h2 class="group-label">Bus finder</h2>
+          <div class="group">
+            <label class="row row-stack">
+              <span class="row-head"><span class="row-label">Search radius</span><output id="radius-out" for="radius-input">5 km</output></span>
+              <input id="radius-input" type="range" min="1" max="50" step="1" value="5" />
+              <span class="row-help">How far to look for buses. The minimap covers this area.</span>
+            </label>
+            <label class="row row-stack">
+              <span class="row-head"><span class="row-label">Compass distance</span><output id="compass-out" for="compass-distance">1 mi</output></span>
+              <input id="compass-distance" type="range" min="0.25" max="5" step="0.25" value="1" />
+              <span class="row-help">Buses closer than this get labels in AR.</span>
+            </label>
+            <label class="row toggle">
+              <span><span class="row-label">Show all nearby buses</span><span class="row-help">Ignore compass distance.</span></span>
+              <input id="compass-all" type="checkbox" role="switch" />
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+          </div>
+
+          <h2 class="group-label">Device</h2>
+          <div class="group">
+            <label class="row row-stack">
+              <span class="row-label">Phone model</span>
+              <select id="preset-select"></select>
+            </label>
+            <label class="row row-stack">
+              <span class="row-label">Camera</span>
+              <select id="camera-select"></select>
+            </label>
+            <label class="row row-stack cardboard-only">
+              <span class="row-head"><span class="row-label">Lens spacing</span><output id="ipd-out" for="ipd-input">64 mm</output></span>
+              <input id="ipd-input" type="range" min="50" max="80" step="1" value="64" />
+              <span class="row-help">Distance between the Cardboard lens centers.</span>
+            </label>
+            <label class="row toggle">
+              <span><span class="row-label">Cast to laptop</span><span class="row-help">Open /cast.html on a laptop on the same Wi-Fi.</span></span>
+              <input id="cast-check" type="checkbox" role="switch" />
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+          </div>
+
+          <h2 class="group-label">Permissions</h2>
+          <ul class="group perm-list" id="perm-list">
+            <li class="row perm" data-perm="camera"><span class="row-label">Camera</span><span class="perm-state">…</span></li>
+            <li class="row perm" data-perm="location"><span class="row-label">Location</span><span class="perm-state">…</span></li>
+            <li class="row perm" data-perm="motion"><span class="row-label">Motion</span><span class="perm-state">…</span></li>
+          </ul>
+          <p class="group-foot">Allowed when you tap Enter AR. Blocked? Re-enable in your browser's site settings.</p>
+
+          <h2 class="group-label">Controls</h2>
+          <ul class="group gesture-list">
+            <li class="row"><span class="row-label">Point the phone</span><span class="row-value">Hold a bus label in the center to open its card</span></li>
+            <li class="row"><span class="row-label">✕ or long-press</span><span class="row-value">Back to home</span></li>
+            <li class="row"><span class="row-label">Double-tap middle</span><span class="row-value">Calibrate: zoom, FOV (Cardboard: tilt, spacing, shift, size)</span></li>
+            <li class="row"><span class="row-label">Tap middle · sides</span><span class="row-value">Next setting · adjust</span></li>
+            <li class="row"><span class="row-label">M · + / − · Esc</span><span class="row-value">Map, zoom, close</span></li>
+          </ul>
+          <p class="group-foot">If labels don't line up with real buses, calibrate FOV. iPhones in Cardboard also need size calibration.</p>
         </div>
-        <div class="setup-toggles"><label class="checkbox"><input id="compass-all" type="checkbox" />All nearby on compass</label><label class="checkbox"><input id="voice-check" type="checkbox" checked />Hey Gemini + spoken replies</label><label class="checkbox"><input id="cast-check" type="checkbox" />Cast to laptop</label></div>
-        <details class="calibration-settings"><summary>Camera &amp; Cardboard calibration</summary><div class="setup-grid"><label>Phone<select id="preset-select"></select></label><label>Lens spacing (mm)<input id="ipd-input" type="number" min="50" max="80" step="1" /></label><label>Camera<select id="camera-select"></select></label></div></details>
-        <div class="launch-actions"><button id="start-btn">Enter TransitLens <span>↗</span></button><button id="demo-btn" type="button">Explore the demo</button></div>
-        <p id="start-status" role="status"></p>
       </section>
-      <section class="voice-playbook"><p class="eyebrow">ONE CONVERSATION. THE WHOLE TRIP.</p><div><span>01 / IDENTIFY</span><p>“Hey Gemini, where is this bus going?”</p></div><div><span>02 / DISCOVER</span><p>“Show me routes to Shands.”</p></div><div><span>03 / GET READY</span><p>“Take the first option. Where do I board?”</p></div><small>Use voice, tap the microphone, or type a question. After a reply, ask a follow-up without repeating the wake phrase.</small></section>
-      <p class="launch-footnote">For Cardboard, rotate to landscape and calibrate your phone. Double-tap the middle to calibrate; long-press to return here. Handheld keeps the same transit and voice state. Desktop: arrow keys turn, Space listens, M opens the map. Casting viewer: /cast.html.</p>
-    </main>
-  </div>
-  <div id="stereo" hidden></div>
-  <dialog id="assistant-panel" aria-labelledby="assistant-title">
-    <button id="assistant-close" type="button" aria-label="Close Gemini">Close</button>
-    <p class="eyebrow">YOUR TRANSIT COPILOT</p><h2 id="assistant-title">Ask Gemini</h2><p id="assistant-source" class="connection-status">Ready</p>
-    <div class="assistant-prompts"><button type="button" data-question="Where is this bus going?">Identify this bus</button><button type="button" data-question="Show routes to Shands">Routes to Shands</button><button type="button" data-question="Highlight route 38">Highlight 38</button><button type="button" data-question="Read the bus sign">Read bus sign</button><button type="button" data-question="Cancel guidance">Cancel trip</button></div>
-    <form id="assistant-form"><label for="assistant-question">What would you like to do?</label><input id="assistant-question" name="question" maxlength="1000" placeholder="Get me to Shands" required autocomplete="off" /><button type="submit">Ask ↗</button></form>
-    <p id="assistant-answer" role="status" aria-live="polite"></p>
-    <div id="journey-options"></div>
-    <small>Direct routes use ordered RTS stop patterns. Stop guidance is approximate bearing and distance, not a verified walking path. Demo vehicles and demo arrival times are synthetic. “Read bus sign” sends one camera still to Gemini; ordinary questions use transit data only.</small>
-  </dialog>
-  <script type="module" src="/src/main.ts"></script>
-</body>
+    </div>
+    <div id="stereo" hidden></div>
+
+    <dialog id="assistant-panel" aria-labelledby="assistant-title">
+      <button id="assistant-close" type="button" aria-label="Close Gemini">Close</button>
+      <p class="eyebrow">YOUR TRANSIT COPILOT</p>
+      <h2 id="assistant-title">Ask Gemini</h2>
+      <p id="assistant-source" class="connection-status">Ready</p>
+      <div class="assistant-prompts">
+        <button type="button" data-question="Where is this bus going?">Identify this bus</button>
+        <button type="button" data-question="Show routes to Shands">Routes to Shands</button>
+        <button type="button" data-question="Highlight route 38">Highlight 38</button>
+        <button type="button" data-question="Read the bus sign">Read bus sign</button>
+        <button type="button" data-question="Cancel guidance">Cancel trip</button>
+      </div>
+      <form id="assistant-form">
+        <label for="assistant-question">What would you like to do?</label>
+        <input id="assistant-question" name="question" maxlength="1000" placeholder="Get me to Shands" required autocomplete="off" />
+        <button type="submit">Ask</button>
+      </form>
+      <p id="assistant-answer" role="status" aria-live="polite"></p>
+      <div id="journey-options"></div>
+      <small>Direct routes use ordered RTS stop patterns. Stop guidance is approximate bearing and distance, not a verified walking path. Demo vehicles and demo arrival times are synthetic. "Read bus sign" sends one camera still to Gemini; ordinary questions use transit data only.</small>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

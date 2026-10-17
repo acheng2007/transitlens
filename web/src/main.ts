@@ -7,7 +7,7 @@ import { createPatternCache, createRouteSelection } from './transit-data';
 import { createMapState, applyMapAction, compassBuses, compassLimitKm } from './map-state';
 import type { MapAction } from './map-state';
 import { DEFAULT_IPD_MM, TRANSIT_SETTINGS as DEFAULT_SETTINGS, PRESETS, detectPreset, getPreset, loadSettings, pxPerMm, saveSettings } from './config';
-import type { Settings } from './config';
+import type { Settings, ThemeChoice } from './config';
 import { describeStream, getZoom, getZoomRange, listCameras, setZoom, startCamera } from './camera';
 import { halfFovDeg, normalizeDeg, visibleHalfTan } from './geo';
 import { drawHud } from './hud';
@@ -19,8 +19,11 @@ import { requestOrientationPermission, startOrientation } from './orientation';
 import type { OrientationTracker } from './orientation';
 import { startBusFeed, watchPosition, REITZ_CENTER, createBusFocus } from './buses';
 import type { BusFeed } from './buses';
-import { createStereoView } from './stereo';
-import type { StereoView } from './stereo';
+import { createMonoView, createStereoView } from './stereo';
+import type { View } from './stereo';
+import { showPhoneLink } from './phone-link';
+import { startHome } from './home';
+import { renderPermissions } from './permissions';
 import { createCastCompositor } from './cast/compositor';
 import type { CastCompositor } from './cast/compositor';
 import { startCastPublisher } from './cast/publisher';
@@ -46,13 +49,95 @@ const castCheck = document.getElementById('cast-check') as HTMLInputElement;
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
 const startStatus = document.getElementById('start-status')!;
 const stereoEl = document.getElementById('stereo')!;
+const permList = document.getElementById('perm-list')!;
+const modeCards = [...document.querySelectorAll<HTMLElement>('[data-mode-view]')];
+const settingsEl = document.getElementById('settings')!;
+const themeButtons = [...document.querySelectorAll<HTMLElement>('[data-theme-choice]')];
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
 const voiceCheck = document.getElementById('voice-check') as HTMLInputElement;
 const assistantPanel = document.getElementById('assistant-panel') as HTMLDialogElement;
 const questionInput = document.getElementById('assistant-question') as HTMLInputElement;
 const assistantAnswer = document.getElementById('assistant-answer')!;
 
+/** Resolved light/dark theme for the page, the HUD canvas and the map. */
+const currentTheme = (): 'light' | 'dark' => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+
+function applyTheme() {
+  const choice: ThemeChoice = settings.theme ?? 'system';
+  const theme = choice === 'system' ? (darkQuery.matches ? 'dark' : 'light') : choice;
+  document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0E0F10' : '#FAFAF8');
+  for (const b of themeButtons) {
+    const on = b.dataset.themeChoice === choice;
+    b.classList.toggle('is-selected', on);
+    b.setAttribute('aria-checked', String(on));
+  }
+}
+for (const b of themeButtons) {
+  b.addEventListener('click', () => {
+    settings.theme = b.dataset.themeChoice as ThemeChoice;
+    saveSettings(settings, 'transitlens-settings-v1');
+    applyTheme();
+  });
+}
+darkQuery.addEventListener('change', () => { if ((settings.theme ?? 'system') === 'system') applyTheme(); });
+
+/** Home screen feed (nearby cards + live indicator); stopped while the AR view runs. */
+let home: ReturnType<typeof startHome> | null = null;
+function restartHome() {
+  home?.stop();
+  home = startHome({ dev: DEV, radiusKm: () => settings.radiusKm ?? 5 });
+}
+
+function openSettings() {
+  settingsEl.hidden = false;
+  void renderPermissions(permList);
+}
+function closeSettings() {
+  if (settingsEl.hidden) return;
+  settingsEl.hidden = true;
+  const radius = settings.radiusKm;
+  readSettingsFromForm();
+  if (settings.radiusKm !== radius) restartHome();
+}
+document.getElementById('settings-open')!.addEventListener('click', openSettings);
+document.getElementById('settings-done')!.addEventListener('click', closeSettings);
+
+/** Phone view (one full-screen image, no headset) vs Cardboard (two eyes). */
+const isMobileView = () => settings.viewMode === 'mobile' || settings.viewMode === 'handheld';
+
+/** Mirrors the hidden view select into the mode cards, and hides Cardboard-only settings in phone view. */
+function syncModeCards() {
+  for (const card of modeCards) {
+    const on = card.dataset.modeView === viewSelect.value;
+    card.classList.toggle('is-selected', on);
+    card.setAttribute('aria-checked', String(on));
+  }
+  for (const el of document.querySelectorAll<HTMLElement>('.cardboard-only')) el.hidden = viewSelect.value !== 'ar';
+}
+for (const card of modeCards) {
+  const pick = () => { viewSelect.value = card.dataset.modeView!; syncModeCards(); };
+  card.addEventListener('click', pick);
+  card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+}
+
+/** Live readouts and filled tracks for the start-screen sliders. */
+const SLIDERS: [HTMLInputElement, string, (v: number) => string][] = [
+  [radiusInput, 'radius-out', (v) => `${v} km`],
+  [compassInput, 'compass-out', (v) => `${v} mi`],
+  [ipdInput, 'ipd-out', (v) => `${v} mm`],
+];
+function syncSliders() {
+  for (const [input, outId, fmt] of SLIDERS) {
+    const min = Number(input.min), max = Number(input.max), v = Number(input.value);
+    input.style.setProperty('--fill', `${((v - min) / (max - min)) * 100}%`);
+    document.getElementById(outId)!.textContent = input.disabled ? 'All' : fmt(v);
+  }
+}
+
+
 let settings: Settings = { ...DEFAULT_SETTINGS };
-let view: StereoView | null = null;
+let view: View | null = null;
 let stream: MediaStream | null = null;
 let orientation: OrientationTracker | null = null;
 let feed: BusFeed | null = null;
@@ -71,6 +156,9 @@ let routeSelection = createRouteSelection();
 function dispatchMap(action: MapAction) { mapState = applyMapAction(mapState, action); renderOverlay(); }
 
 let busFocus = createBusFocus();
+/** When the current selection began, so both eyes animate the card identically. */
+let lastFocusId: string | null = null;
+let focusSinceMs = 0;
 let wakeLock: WakeLockSentinel | null = null;
 let orientationMessage = '';
 let session = 0;
@@ -160,6 +248,9 @@ let toastTimer = 0;
 // Re-locks after LOCK_AFTER_MS without a tap (except in 'info', which stays up).
 type Mode = 'zoom' | 'tilt' | 'spacing' | 'shift' | 'size' | 'fov' | 'info';
 const MODES: Mode[] = ['zoom', 'tilt', 'spacing', 'shift', 'size', 'fov', 'info'];
+/** Phone view has no lenses: only camera zoom, FOV and info apply. */
+const MOBILE_MODES: Mode[] = ['zoom', 'fov', 'info'];
+const modes = () => (isMobileView() ? MOBILE_MODES : MODES);
 let mode: Mode | null = null;
 let lockTimer = 0;
 let lastMiddleTap = 0;
@@ -170,6 +261,7 @@ let longPressTimer = 0;
 let longPressFired = false;
 
 async function initStartScreen() {
+  void showPhoneLink();
   for (const p of PRESETS) presetSelect.add(new Option(p.label, p.id));
   const saved = loadSettings('transitlens-settings-v1');
   settings = {
@@ -180,13 +272,18 @@ async function initStartScreen() {
   presetSelect.value = settings.presetId;
   ipdInput.value = String(settings.ipdMm);
   dataSelect.value = params.get('demo') === '1' ? 'demo' : settings.dataMode === 'demo' ? 'demo' : 'live';
-  viewSelect.value = settings.viewMode;
-  radiusInput.value = settings.radiusKm == null ? '' : String(settings.radiusKm);
+  viewSelect.value = settings.viewMode === 'ar' ? 'ar' : 'mobile';
+  syncModeCards();
+  radiusInput.value = String(settings.radiusKm ?? 5);
   compassInput.value = String(settings.compassDistanceMiles ?? 1);
   compassAll.checked = settings.compassDistanceMiles === null;
   compassInput.disabled = compassAll.checked;
   castCheck.checked = settings.castEnabled;
   voiceCheck.checked = settings.voiceEnabled;
+  applyTheme();
+  syncSliders();
+  void renderPermissions(permList);
+  restartHome();
   await refreshCameraList();
 
   void fetch('/api/voice/health').then(r => r.json()).then(data => { document.getElementById('connection-status')!.textContent = data.hasKey ? 'Gemini key configured' : 'Add Gemini key · demo ready'; }).catch(() => { document.getElementById('connection-status')!.textContent = 'Start voice service · port 8002'; });
@@ -219,24 +316,25 @@ function readSettingsFromForm() {
     ipdMm: Number.isFinite(ipd) && ipd > 0 ? Math.min(80, Math.max(50, ipd)) : DEFAULT_IPD_MM,
     cameraId: cameraSelect.value,
     dataMode: dataSelect.value === 'demo' ? 'demo' : 'live',
-    viewMode: viewSelect.value === 'handheld' ? 'handheld' : 'ar',
+    viewMode: viewSelect.value === 'ar' ? 'ar' : 'mobile',
     voiceEnabled: voiceCheck.checked,
     radiusKm: parseRadius(radiusInput.value),
     compassDistanceMiles: compassAll.checked ? null : (Number(compassInput.value) > 0 && Number.isFinite(Number(compassInput.value)) ? Number(compassInput.value) : 1),
     castEnabled: castCheck.checked,
   };
-  radiusInput.value = settings.radiusKm == null ? '' : String(settings.radiusKm);
+  radiusInput.value = String(settings.radiusKm ?? 5);
   compassInput.value = String(settings.compassDistanceMiles ?? 1);
+  syncSliders();
   saveSettings(settings, 'transitlens-settings-v1');
 }
 
-/** Fullscreen + landscape lock. Must be kicked off synchronously from the tap. */
+/** Fullscreen (+ landscape lock for Cardboard). Must be kicked off synchronously from the tap. */
 async function enterImmersive() {
   try {
     await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-    await (screen.orientation as any).lock?.('landscape');
+    if (!isMobileView()) await (screen.orientation as any).lock?.('landscape');
   } catch {
-    // iOS and desktop don't support these; the view still works.
+    // iPhone and desktop don't support these; the view still works.
   }
 }
 
@@ -288,21 +386,22 @@ function frame() {
   const timeMs = performance.now();
   const headingDeg = currentHeading();
   const selectedFocusId = busFocus.update(buses, headingDeg, timeMs);
+  if (selectedFocusId !== lastFocusId) { lastFocusId = selectedFocusId; focusSinceMs = timeMs; }
   focusedBusId = selectedFocusId;
+  const dwell = busFocus.progress(timeMs);
   mapState = { ...mapState, center: feedState?.position ?? null, responseCenter: feedState?.responseCenter ?? null, headingDeg };
   const routeId = routeSelection.update(buses.find(b => b.id === selectedFocusId) ?? null, timeMs);
   const route = routeId ? patterns?.get(routeId, timeMs) ?? null : null;
-  streetMap?.update({ state: mapState, buses: allBuses, focusId: selectedFocusId, halfFov: lastHalfFovDeg, journey: journeyState, route });
+  streetMap?.update({ state: mapState, buses: allBuses, focusId: selectedFocusId, halfFov: lastHalfFovDeg, theme: currentTheme(), journey: journeyState, route });
   const hud = {
     headingDeg, halfTan, buses: buses,
     status: [feedState?.status ?? '', orientationMessage, orientation?.get()?.northReference === 'magnetic' ? 'Magnetic heading - true-north correction pending' : '', !DEV && headingDeg == null ? 'Compass unavailable - check motion permission' : ''].filter(Boolean).join(' · '),
-    timeMs, voice: voiceHud, journey: journeyState, position: feedState?.position ?? null, assistantSource, demo: settings.dataMode === 'demo', handheld: settings.viewMode === 'handheld',
+    timeMs, voice: voiceHud, journey: journeyState, position: feedState?.position ?? null, assistantSource, demo: settings.dataMode === 'demo', handheld: isMobileView(),
     selectedFocusId, mapFrame: streetMap?.get(), expandedMap: mapState.mode === 'expanded',
+    focusSinceMs, dwellId: dwell.id, dwellProgress: dwell.t, mobile: isMobileView(), theme: currentTheme(),
   };
   // Selection is already resolved. Every renderer receives the same state.
-  const [left, right] = view.eyes;
-  drawHud(left.ctx, width, height, hud);
-  drawHud(right.ctx, width, height, hud);
+  for (const eye of view.eyes) drawHud(eye.ctx, width, height, hud);
 
   if (cast) {
     // The cast frame has its own aspect, so its visible FOV differs from an eye's.
@@ -324,11 +423,15 @@ function frame() {
 /** The headset's crosshair is a DOM element, so the cast frame draws its own. */
 function drawCastCrosshair(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.save();
-  ctx.strokeStyle = 'rgba(79, 195, 247, 0.9)';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(248, 250, 252, 0.85)';
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(w / 2, h / 2, 12, 0, Math.PI * 2);
+  ctx.arc(w / 2, h / 2, 11, 0, Math.PI * 2);
   ctx.stroke();
+  ctx.fillStyle = '#b7d9d0';
+  ctx.beginPath();
+  ctx.arc(w / 2, h / 2, 2, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -360,13 +463,21 @@ function renderOverlay() {
       tilt ${settings.tiltDeg}° · ${settings.ipdMm}mm · shift ${settings.offsetMm}mm · ${Math.round(settings.viewScale * 100)}% · ${stream ? describeStream(stream) : 'no camera'}</div>`;
   }
   const error = hudError ? `<div class="hud-error">${hudError}</div>` : '';
-  const resume =
-    !DEV && !document.fullscreenElement ? '<div class="hud-hint">Rotate to landscape · long-press for settings</div>' : '';
+  // Cardboard only: ask for landscape when portrait, or offer to re-enter fullscreen where it exists (not iPhone).
+  const portrait = window.innerHeight > window.innerWidth;
+  const resume = DEV || isMobileView() ? ''
+    : portrait ? '<div class="hud-hint">Turn the phone sideways for Cardboard · long-press for settings</div>'
+    : document.fullscreenEnabled && !document.fullscreenElement ? '<div class="hud-hint">Tap to go fullscreen · long-press for settings</div>' : '';
+  const close = isMobileView() ? '<button class="view-close" data-exit aria-label="Back to settings"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' : '';
   const toastHtml = toast ? `<div class="toast">${toast}</div>` : '';
-  const controls = `<div class="map-controls"><button data-listen class="voice-trigger" data-state="${voiceHud.state}"><span class="voice-dot"></span>${voiceHud.state === 'idle' ? 'Hey Gemini' : voiceHud.state}</button><button data-assistant>Ask</button><button data-map="toggle">${mapState.mode === 'expanded' ? 'Close' : 'Map'}</button><button data-map="in" aria-label="Zoom map in">+</button><button data-map="out" aria-label="Zoom map out">−</button></div>`;
+  const calib = mode ? `<div class="calib">${modes().map((m) => `<span${m === mode ? ' class="on"' : ''}>${m}</span>`).join('')}</div>` : '';
+  const expanded = mapState.mode === 'expanded';
+  const icon = (d: string) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+  const toggleIcon = expanded ? icon('M6 6l12 12M18 6L6 18') : icon('M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5');
+  const controls = `<div class="map-controls${expanded ? ' is-expanded' : ''}"><button data-listen class="voice-trigger" data-state="${voiceHud.state}"><span class="voice-dot"></span>${voiceHud.state === 'idle' ? 'Hey Gemini' : voiceHud.state}</button><button data-assistant>Ask</button><button data-map="toggle" aria-pressed="${expanded}" aria-label="${expanded ? 'Close map' : 'Open map'}">${toggleIcon}</button><button data-map="in" aria-label="Zoom map in">${icon('M12 5v14M5 12h14')}</button><button data-map="out" aria-label="Zoom map out">${icon('M5 12h14')}</button></div>`;
   const credits = '<div class="map-credits" data-map-credit><a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>';
   const badge = `<div class="session-badge">${settings.dataMode === 'demo' ? (CAMERA_OFF ? 'DEMO · SYNTHETIC VEHICLES · NO CAMERA' : 'DEMO · SYNTHETIC VEHICLES') : 'LIVE RTS'} <span>TRANSITLENS</span></div>`;
-  const html = `${badge}${credits}${mapState.mode === 'compact' ? '<div class="crosshair"></div>' : ''}${controls}${error}${resume}${toastHtml}${debug}`;
+  const html = `${badge}${credits}${mapState.mode === 'compact' ? '<div class="crosshair"></div>' : ''}${controls}${error}${resume}${close}${calib}${toastHtml}${debug}`;
   for (const eye of view.eyes) eye.overlay.innerHTML = html;
 }
 
@@ -374,6 +485,8 @@ async function start() {
   if (startBtn.disabled) return;
   const activeSession = ++session;
   readSettingsFromForm();
+  home?.stop();
+  home = null;
   conversation.reset();
   focusedBusId = null;
   journeyState = createJourneyState();
@@ -436,6 +549,7 @@ async function start() {
 
     if (!DEV) orientation = startOrientation(FORCE_ORIENT_EVENTS, () => feed?.get().declinationDeg ?? null);
     busFocus = createBusFocus();
+    lastFocusId = null;
     if (!DEV && settings.dataMode !== 'demo') gps = watchPosition();
     feed = settings.dataMode === 'demo' ? startDemoFeed() : startBusFeed({
       getPosition: () => DEV ? REITZ_CENTER : gps?.get() ?? null,
@@ -448,7 +562,8 @@ async function start() {
       : createPatternCache();
     routeSelection = createRouteSelection();
     streetMap = createStreetMap();
-    view = createStereoView(stereoEl, stream, settings.viewMode === 'handheld');
+    view = isMobileView() ? createMonoView(stereoEl, stream) : createStereoView(stereoEl, stream);
+    stereoEl.classList.toggle('is-mobile', isMobileView());
     if (DEV && settings.dataMode === 'demo') devHeading = feed.get().buses[0]?.bearingDeg ?? 0;
     mode = null;
     longPressFired = false;
@@ -534,6 +649,9 @@ function stop() {
   stereoEl.hidden = true;
   startScreen.hidden = false;
   ipdInput.value = String(settings.ipdMm);
+  syncSliders();
+  void renderPermissions(permList);
+  restartHome();
   refreshCameraList();
 }
 
@@ -604,8 +722,9 @@ async function adjust(direction: -1 | 1) {
 
 /** Cycles zoom → … → info → locked. */
 function cycleMode() {
-  const i = mode ? MODES.indexOf(mode) + 1 : 0;
-  mode = i < MODES.length ? MODES[i] : null;
+  const list = modes();
+  const i = mode ? list.indexOf(mode) + 1 : 0;
+  mode = i < list.length ? list[i] : null;
   showToast(mode === null ? 'calibration locked' : mode === 'info' ? 'info' : `◀ ▶ ${modeLabel()}`);
 }
 
@@ -627,6 +746,7 @@ function onViewTap(e: MouseEvent) {
     return;
   }
   if ((e.target as Element).closest('[data-map-credit]')) return;
+  if ((e.target as Element).closest('[data-exit]')) { stop(); return; }
   const control = (e.target as Element).closest<HTMLButtonElement>('[data-map]');
   if (control) {
     if (control.dataset.map === 'toggle') dispatchMap({ type: 'set_map_mode', mode: mapState.mode === 'compact' ? 'expanded' : 'compact' });
@@ -670,12 +790,13 @@ function showToast(text: string) {
   }, 1500);
 }
 
-compassAll.addEventListener('change', () => { compassInput.disabled = compassAll.checked; });
+compassAll.addEventListener('change', () => { compassInput.disabled = compassAll.checked; syncSliders(); });
+for (const [input] of SLIDERS) input.addEventListener('input', syncSliders);
 startBtn.addEventListener('click', start);
 stereoEl.addEventListener('click', onViewTap);
 // Long-press anywhere = back to the start screen (the deliberate way out).
 stereoEl.addEventListener('pointerdown', (e) => {
-  if ((e.target as Element).closest('[data-map], [data-map-credit], [data-assistant], [data-listen]')) return;
+  if ((e.target as Element).closest('[data-map], [data-map-credit], [data-exit], [data-assistant], [data-listen]')) return;
   clearTimeout(longPressTimer);
   longPressTimer = window.setTimeout(() => {
     longPressFired = true;
@@ -687,6 +808,7 @@ for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
 }
 window.addEventListener('keydown', (e) => {
   if (assistantPanel.open) return;
+  if (!view && e.key === 'Escape') { closeSettings(); return; }
   if (view && e.code === 'Space') { e.preventDefault(); voice?.listen(); return; }
   if (view && ['m', 'M', '+', '=', '-', 'Escape'].includes(e.key)) {
     e.preventDefault();

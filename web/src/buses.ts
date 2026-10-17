@@ -63,6 +63,9 @@ export function startBusFeed(opts: { getPosition: () => Position | null; positio
   };
 }
 
+/** How long a bus must stay in the focus cone before its card opens. */
+const DWELL_MS = 650;
+
 /** One dwell calculation per frame; rendering never changes selection. */
 export function createBusFocus() {
   let candidate: string | null = null;
@@ -73,7 +76,11 @@ export function createBusFocus() {
         .filter(b => Math.abs(signedDiffDeg(b.bearingDeg, heading)) <= 7.5)
         .sort((a, b) => Math.abs(signedDiffDeg(a.bearingDeg, heading)) - Math.abs(signedDiffDeg(b.bearingDeg, heading)) || a.distanceKm - b.distanceKm)[0]?.id ?? null;
       if (next !== candidate) { candidate = next; since = time; }
-      return candidate && time - since >= 650 ? candidate : null;
+      return candidate && time - since >= DWELL_MS ? candidate : null;
+    },
+    /** Read-only dwell progress (0..1) of the current candidate, for the HUD's selection ring. */
+    progress(time: number): { id: string | null; t: number } {
+      return { id: candidate, t: candidate ? Math.min(1, Math.max(0, (time - since) / DWELL_MS)) : 0 };
     },
   };
 }
