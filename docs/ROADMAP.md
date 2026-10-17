@@ -13,12 +13,14 @@ Gemini, synthetic buses, transit route overlays, arrivals, navigation, and Mobil
 Physical iPhone acceptance for the new map remains pending.
 See [street-map verification](STREET_MAP_VERIFICATION.md).
 
+For current parallel assignments, ownership boundaries, dependencies, and first tasks, use [the parallel work plan](PARALLEL_WORK.md).
 The remaining roadmap preserves the broader product direction and earlier milestone checklists as historical planning, rather than claiming each item is implemented.
 
 
-Status: upstream source imported; application migration has not started.
-No implementation milestone is complete.
-This roadmap follows the [PRD](PRD.md) and deliberately stops the first implementation task at the verified Cardboard bus demo.
+Historical planning baseline: the following sequence was written before the live-first migration.
+Its unchecked items are not a current completion ledger.
+The active checkpoint above and linked verification records describe implemented behavior; the parallel work plan describes remaining assignments.
+The original sequence follows the [PRD](PRD.md) and proposed a first stop at the verified Cardboard bus demo.
 
 ## Delivery approach
 
