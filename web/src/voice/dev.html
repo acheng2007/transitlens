@@ -25,8 +25,8 @@
     <h1>Voice module dev page</h1>
     <p class="hint">
       Desktop: type what the user "said" and press Enter (no mic needed).
-      Phone/Chrome: click <b>Start (real mic)</b>, then say "hey grok, what plane is that?".
-      Needs voice-service on :8002 for real answers; otherwise you get the offline line.
+      Phone/Chrome: click <b>Start (real mic)</b>, then say "Hey Gemini, where is this bus going?".
+      Scripted mode needs no backend and never calls Gemini. Uncheck it for live RTS and Gemini via :8002.
     </p>
 
     <div class="row">
@@ -37,13 +37,13 @@
     </div>
 
     <div class="row">
-      <label>Centered plane: <select id="plane"></select></label>
+      <label>Focused live bus ID: <input id="bus" type="text" placeholder="ID from RTS HUD" /></label>
       <label><input type="checkbox" id="speak" checked /> speak answers</label>
-      <label><input type="checkbox" id="grokvoice" checked /> Grok voice (server TTS; unchecked = browser voice)</label>
+      <label><input type="checkbox" id="scripted" checked /> SCRIPTED DEMO: synthetic bus, no cloud</label>
     </div>
 
     <div class="row">
-      <input id="say" type="text" placeholder='Simulate transcript, e.g. "hey grok what plane is that"' />
+      <input id="say" type="text" placeholder='Simulate transcript, e.g. "Hey Gemini where is this bus going"' />
       <button id="say-btn">Say</button>
       <button id="tilt">Head tilt (listen)</button>
     </div>

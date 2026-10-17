@@ -54,7 +54,7 @@ export type Settings = {
    */
   dataMode: DataMode;
   viewMode: ViewMode;
-  /** "Hey Grok" voice assistant (inherited module in src/voice/). */
+  /** "Hey Gemini" voice assistant (inherited module in src/voice/). */
   voiceEnabled: boolean;
   /** Plane search radius. null = flight-service's defaults (15 km live, 40 km demo). */
   radiusKm: number | null;
@@ -75,9 +75,9 @@ export type DataMode = 'demo' | 'live' | 'fixture' | 'sim';
 
 /**
  * 'ar' = Cardboard camera passthrough (two eyes); 'mobile' = one full-screen camera view held in the hand;
- * 'vr' = virtual Atlanta scene rendered in 3D (src/vr/).
+ * 'handheld' is accepted as an alias of mobile for older settings; 'vr' = virtual Atlanta scene (src/vr/).
  */
-export type ViewMode = 'ar' | 'mobile' | 'vr';
+export type ViewMode = 'ar' | 'mobile' | 'handheld' | 'vr';
 
 export const DEFAULT_SETTINGS: Settings = {
   presetId: 'generic',
@@ -97,7 +97,7 @@ export const DEFAULT_SETTINGS: Settings = {
   freezePlanes: true,
 };
 
-export const TRANSIT_SETTINGS: Settings = { ...DEFAULT_SETTINGS, dataMode: 'live', viewMode: 'mobile', voiceEnabled: false, radiusKm: 5, compassDistanceMiles: 1, freezePlanes: false };
+export const TRANSIT_SETTINGS: Settings = { ...DEFAULT_SETTINGS, dataMode: 'live', viewMode: 'mobile', voiceEnabled: true, radiusKm: 5, compassDistanceMiles: 1, freezePlanes: false };
 
 const STORAGE_KEY = 'ar-plane-settings-v4';
 

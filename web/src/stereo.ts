@@ -59,9 +59,10 @@ function makeEye(stream: MediaStream | null): Eye {
 }
 
 /** `stream` may be null (desktop dev mode without a camera). */
-export function createStereoView(container: HTMLElement, stream: MediaStream | null): StereoView {
+export function createStereoView(container: HTMLElement, stream: MediaStream | null, single = false): StereoView {
   const eyes: [Eye, Eye] = [makeEye(stream), makeEye(stream)];
   container.replaceChildren(eyes[0].root, eyes[1].root);
+  eyes[1].root.hidden = single;
 
   let size = { width: 0, height: 0 };
 
@@ -81,16 +82,16 @@ export function createStereoView(container: HTMLElement, stream: MediaStream | n
       [cx + dx, cy + dy],
     ];
     // Eyes touch in the middle when there's room; never wider than the lens spacing.
-    const eyeW = Math.max(0, Math.min(ipdPx, W - ipdPx)) * viewScale;
-    const eyeH = H * viewScale;
+    const eyeW = single ? W : Math.max(0, Math.min(ipdPx, W - ipdPx)) * viewScale;
+    const eyeH = single ? H : H * viewScale;
     eyes.forEach((eye, i) => {
-      const [x, y] = centers[i];
+      const [x, y] = single ? [W / 2, H / 2] : centers[i];
       Object.assign(eye.root.style, {
         left: `${x - eyeW / 2}px`,
         top: `${y - eyeH / 2}px`,
         width: `${eyeW}px`,
         height: `${eyeH}px`,
-        transform: tiltDeg ? `rotate(${tiltDeg}deg)` : '',
+        transform: !single && tiltDeg ? `rotate(${tiltDeg}deg)` : '',
       });
       const dpr = window.devicePixelRatio || 1;
       eye.ctx.canvas.width = Math.round(eyeW * dpr);

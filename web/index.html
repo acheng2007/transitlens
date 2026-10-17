@@ -53,6 +53,7 @@
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
             </span>
           </button>
+          <button id="demo-btn" type="button" class="pill-btn">Explore the demo</button>
           <div class="segmented" role="radiogroup" aria-label="View">
             <button class="segment is-selected" role="radio" aria-checked="true" data-mode-view="mobile">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2.5" /><path d="M11 18h2" /></svg>
@@ -125,18 +126,28 @@
               </div>
               <p class="row-help">Phone: hold it up and look around. Cardboard: stereo view in a headset, phone sideways.</p>
             </div>
-            <div class="row">
+            <label class="row row-stack">
               <span class="row-label">Data</span>
-              <span class="row-value">Live RTS</span>
+              <select id="data-select">
+                <option value="live">Live RTS</option>
+                <option value="demo">Showcase demo</option>
+              </select>
+              <span class="row-help">Demo uses synthetic Gainesville buses. Live never substitutes demo vehicles.</span>
+            </label>
+            <label class="row toggle">
+              <span><span class="row-label">Hey Gemini</span><span class="row-help">Wake phrase and spoken replies.</span></span>
+              <input id="voice-check" type="checkbox" role="switch" checked />
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+            <div class="row">
+              <span class="row-label">Gemini</span>
+              <span class="row-value" id="connection-status">Checking…</span>
             </div>
           </div>
           <!-- The app reads these selects; the segmented controls mirror them. -->
           <select id="view-select" class="visually-hidden" tabindex="-1" aria-hidden="true">
             <option value="mobile">Phone</option>
             <option value="ar">Google Cardboard</option>
-          </select>
-          <select id="data-select" class="visually-hidden" tabindex="-1" aria-hidden="true">
-            <option value="live">Live RTS</option>
           </select>
 
           <h2 class="group-label">Bus finder</h2>
@@ -201,6 +212,28 @@
       </section>
     </div>
     <div id="stereo" hidden></div>
+
+    <dialog id="assistant-panel" aria-labelledby="assistant-title">
+      <button id="assistant-close" type="button" aria-label="Close Gemini">Close</button>
+      <p class="eyebrow">YOUR TRANSIT COPILOT</p>
+      <h2 id="assistant-title">Ask Gemini</h2>
+      <p id="assistant-source" class="connection-status">Ready</p>
+      <div class="assistant-prompts">
+        <button type="button" data-question="Where is this bus going?">Identify this bus</button>
+        <button type="button" data-question="Show routes to Shands">Routes to Shands</button>
+        <button type="button" data-question="Highlight route 38">Highlight 38</button>
+        <button type="button" data-question="Read the bus sign">Read bus sign</button>
+        <button type="button" data-question="Cancel guidance">Cancel trip</button>
+      </div>
+      <form id="assistant-form">
+        <label for="assistant-question">What would you like to do?</label>
+        <input id="assistant-question" name="question" maxlength="1000" placeholder="Get me to Shands" required autocomplete="off" />
+        <button type="submit">Ask</button>
+      </form>
+      <p id="assistant-answer" role="status" aria-live="polite"></p>
+      <div id="journey-options"></div>
+      <small>Direct routes use ordered RTS stop patterns. Stop guidance is approximate bearing and distance, not a verified walking path. Demo vehicles and demo arrival times are synthetic. "Read bus sign" sends one camera still to Gemini; ordinary questions use transit data only.</small>
+    </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

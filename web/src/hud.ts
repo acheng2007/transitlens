@@ -6,16 +6,18 @@
 //   below the bar: degree ticks/labels, current heading
 //   right under that: info card for the focused plane, attached to the compass
 //                  (drops down like a notification)
-// Voice ("hey grok") status and answers show as subtitles near the bottom.
+// Voice ("Hey Gemini") status and answers show as subtitles near the bottom.
 // Transit receives a shared street-map frame; the native aircraft renderer retains its radar.
 // The middle of the view stays clear.
 
 import { aircraftStatus, busCard, busFields, cardLines, flightLabel, statusTag } from './format';
 import type { AircraftStatus } from './format';
-import { halfFovDeg, normalizeDeg, projectX, signedDiffDeg } from './geo';
+import { bearingDeg, haversineKm, halfFovDeg, normalizeDeg, projectX, signedDiffDeg } from './geo';
 import type { Plane } from './planes';
 import type { MapFrame } from './street-map';
-import type { Bus } from './buses';
+import type { Bus, Position } from './buses';
+import type { JourneyState } from './journey-state';
+import { arrivalLabel } from './journey-state';
 type Target = Plane | Bus;
 import type { VoiceState } from './voice';
 
@@ -25,6 +27,7 @@ export type VoiceHud = {
   transcript: string | null;
   answer: string | null;
   error: string | null;
+  wakeEnabled?: boolean;
 };
 
 /** Planes the viewer is looking at this frame (offsetDeg filled in), for voice context. */
@@ -44,6 +47,11 @@ export type HudState<T = Plane> = {
   selectedFocusId?: string | null;
   mapFrame?: MapFrame | null;
   expandedMap?: boolean;
+  journey?: JourneyState;
+  position?: Position | null;
+  assistantSource?: string;
+  demo?: boolean;
+  handheld?: boolean;
   /** Data feed status, shown when there are no planes at all (e.g. "live · waiting for GPS"). */
   status: string;
   /** Frame timestamp (same for both eyes) for animations. */
@@ -140,8 +148,8 @@ const BLINK_MS = 400;
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
 /** Global text size multiplier; tune here if text is too big/small in the headset. */
-const TEXT_SCALE = 0.8;
-const fs = (px: number) => Math.round(px * TEXT_SCALE * 10) / 10;
+let textScale = 0.8;
+const fs = (px: number) => Math.round(px * textScale * 10) / 10;
 
 /** Vertical position of the compass bar (fraction of eye height). The lenses hide the very top. */
 const COMPASS_Y = 0.24;
@@ -156,13 +164,14 @@ const CARD_ANIM_MS = 180;
 let focusAnim: { id: string; since: number } | null = null;
 
 /** Subtitle area for voice: bottom edge of the answer panel (fraction of eye height). */
-const VOICE_Y = 0.84;
-/** How long the idle "Say Hey Grok" hint stays after start (ms). */
+const VOICE_Y = 0.74;
+/** How long the idle "Say Hey Gemini" hint stays after start (ms). */
 const HINT_MS = 15000;
 
 export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState<Bus>): HudResult<Bus>;
 export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState): HudResult;
 export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState<Target>): HudResult<Target> {
+  textScale = s.handheld ? Math.max(1, Math.min(1.4, w / 900)) : 0.8;
   ctx.clearRect(0, 0, w, h);
   ctx.textBaseline = 'middle';
   T = PALETTES[s.theme ?? 'light'];
@@ -170,14 +179,55 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: 
   // Transit map frames remain independent of compass filtering and voice status.
   if (s.mapFrame) {
     const selected = s.selectedFocusId ? (s.planes.find((p) => p.id === s.selectedFocusId) as Bus | undefined) ?? null : null;
-    drawStreetMap(ctx, w, h, s.mapFrame, selected && 'route' in selected ? selected : null);
+    const withVoice = !!s.journey?.plan || !!s.journey?.guidance || (!!s.voice && (s.voice.state !== 'idle' || !!s.voice.answer || !!s.voice.error));
+    drawStreetMap(ctx, w, h, s.mapFrame, selected && 'route' in selected ? selected : null, withVoice);
   }
   else if (s.headingDeg != null) {
     drawRadar(ctx, w, h, s, s.headingDeg, result.focus?.id ?? null);
   }
   if (s.selectedFocusId !== undefined) drawStatus(ctx, w, h, s.status);
+  if (s.journey) drawJourney(ctx, w, h, s);
   if (s.voice) drawVoice(ctx, w, h, s.voice, s.timeMs);
   return result;
+}
+
+/** The trip result is shared across every eye and casting. */
+function drawJourney(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState<Target>) {
+  const state = s.journey!;
+  const cx = w * 0.71;
+  if (state.guidance) {
+    const j = state.guidance;
+    label(ctx,cx,h*0.38,`BOARD ROUTE ${j.routeId}`,fs(15),'#b5ff67','center',true);
+    ctx.font=`${fs(11)}px ${FONT}`;
+    const names=wrapLines(ctx,j.boardingStop.name,w*0.39).slice(0,2);
+    names.forEach((line,i)=>label(ctx,cx,h*0.41+i*fs(14),line,fs(11),COLORS.text,'center'));
+    label(ctx,cx,h*0.48,arrivalLabel(j),fs(11),'#ffc94d','center');
+    if (s.position) {
+      const distance=haversineKm(s.position.lat,s.position.lon,j.boardingStop.lat,j.boardingStop.lon);
+      const bearing=bearingDeg(s.position.lat,s.position.lon,j.boardingStop.lat,j.boardingStop.lon);
+      const off=s.headingDeg===null?null:signedDiffDeg(bearing,s.headingDeg);
+      const direction=off===null ? `${Math.round(bearing)}° true` : Math.abs(off)<8?'AHEAD':off<0?'TURN LEFT':'TURN RIGHT';
+      label(ctx,cx,h*0.52,`${Math.round(distance*1000)} m · ${direction}`,fs(14),'#b5ff67','center',true);
+      label(ctx,cx,h*0.55,'STOP BEARING · NOT A WALKING PATH',fs(7),COLORS.text,'center');
+      // Bearing diamond is constrained to the compass, leaving the central view clear.
+      if (off!==null) {
+        const x=Math.max(w*0.12,Math.min(w*0.88,projectX(off,s.halfTan,w)??(off<0?0:w)));
+        const y=h*0.18;
+        ctx.save();ctx.translate(x,y);ctx.rotate(Math.PI/4);ctx.fillStyle='#b5ff67';
+        ctx.shadowColor='#b5ff67';ctx.shadowBlur=12;ctx.fillRect(-5,-5,10,10);ctx.restore();
+        label(ctx,x,y-fs(15),'BOARD',fs(8),'#b5ff67','center',true);
+      }
+    }
+  } else if (state.plan) {
+    const p=state.plan;
+    label(ctx,cx,h*0.38,p.status==='ambiguous'?'WHICH DESTINATION?':p.options.length?`${p.options.length} DIRECT OPTIONS`:'NO DIRECT TRIP',fs(12),'#b5ff67','center',true);
+    p.options.slice(0,3).forEach((j,i)=>{
+      label(ctx,cx,h*(0.43+i*0.045),`${i+1} · ROUTE ${j.routeId} · ${j.rideStops} stops`,fs(11),j.color,'center',true);
+    });
+    if (p.options.length) label(ctx,cx,h*0.57,'Say “take the first option”',fs(9),COLORS.text,'center');
+    if (p.status==='ambiguous') label(ctx,cx,h*0.44,'Name a stop to narrow the search',fs(9),COLORS.text,'center');
+  }
+  if (s.assistantSource) label(ctx,w/2,h*0.12,s.assistantSource.toUpperCase(),fs(8),s.demo?'#ffc94d':'#81d9ed','center');
 }
 
 /** Radar center (fractions of eye width/height) and radius (fraction of eye width). Kept inward: lens edges blur. */
@@ -357,12 +407,14 @@ let voiceStartMs: number | null = null;
 /** Voice subtitles: status pill, the question, and the answer, stacked up from VOICE_Y. */
 function drawVoice(ctx: CanvasRenderingContext2D, w: number, h: number, v: VoiceHud, timeMs: number) {
   voiceStartMs ??= timeMs;
-  const maxW = w * 0.78;
+  const maxW = w * 0.40;
+  const cx = w * 0.71;
   let bottom = h * VOICE_Y;
 
   if (v.error) {
-    label(ctx, w / 2, bottom, v.error, fs(10), '#ff8a80', 'center');
-    bottom -= fs(16);
+    ctx.font = `${fs(10)}px ${FONT}`;
+    const errors = wrapLines(ctx, v.error, maxW).slice(0, 2);
+    errors.forEach(line => { label(ctx, cx, bottom, line, fs(10), '#ff8a80', 'center'); bottom -= fs(14); });
   }
 
   if (v.answer) {
@@ -372,7 +424,7 @@ function drawVoice(ctx: CanvasRenderingContext2D, w: number, h: number, v: Voice
     const lineH = fs(12) + 4;
     const panelW = Math.min(maxW, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16);
     const panelH = lines.length * lineH + 10;
-    const x = (w - panelW) / 2;
+    const x = cx - panelW / 2;
     const y = bottom - panelH;
     ctx.fillStyle = COLORS.panel;
     roundRect(ctx, x, y, panelW, panelH, 6);
@@ -389,16 +441,16 @@ function drawVoice(ctx: CanvasRenderingContext2D, w: number, h: number, v: Voice
     ctx.font = `italic 500 ${fs(11)}px ${FONT}`;
     const q = wrapLines(ctx, `“${v.transcript}”`, maxW)[0];
     ctx.restore();
-    label(ctx, w / 2, bottom, q, fs(11), 'rgba(255,255,255,0.75)', 'center');
+    label(ctx, cx, bottom, q, fs(11), 'rgba(255,255,255,0.75)', 'center');
     bottom -= fs(18);
   }
 
   const pulse = 0.5 + 0.5 * Math.sin(timeMs / 180);
-  if (v.state === 'listening') pill(ctx, w / 2, bottom, 'Listening…', `rgba(255, 82, 82, ${0.5 + 0.5 * pulse})`);
-  else if (v.state === 'thinking') pill(ctx, w / 2, bottom, `Thinking${'.'.repeat(1 + (Math.floor(timeMs / 300) % 3))}`, COLORS.hud);
-  else if (v.state === 'speaking') pill(ctx, w / 2, bottom, 'Grok', COLORS.focus);
+  if (v.state === 'listening') pill(ctx, cx, bottom, 'Listening…', `rgba(255, 82, 82, ${0.5 + 0.5 * pulse})`);
+  else if (v.state === 'thinking') pill(ctx, cx, bottom, `Thinking${'.'.repeat(1 + (Math.floor(timeMs / 300) % 3))}`, COLORS.hud);
+  else if (v.state === 'speaking') pill(ctx, cx, bottom, 'Gemini', COLORS.focus);
   else if (!v.answer && !v.error && timeMs - voiceStartMs < HINT_MS) {
-    label(ctx, w / 2, bottom, 'Say “Hey Grok…”', fs(10), 'rgba(255,255,255,0.6)', 'center');
+    label(ctx, cx, bottom, v.wakeEnabled === false ? 'Tap Ask Gemini to type' : 'Say “Hey Gemini…”', fs(10), 'rgba(255,255,255,0.6)', 'center');
   }
 }
 
@@ -1080,11 +1132,13 @@ function wrapStatus(status: string): string[] {
 /**
  * Floating minimap: circular (compact) or rounded square (expanded) with a light rim and range chip.
  * In expanded mode the selected bus gets a compact panel at the bottom of the map (the main card is hidden).
+ * withVoice shrinks and shifts the expanded map so journey and voice panels stay readable.
  */
-function drawStreetMap(ctx: CanvasRenderingContext2D, w: number, h: number, f: MapFrame, selected: Bus | null) {
+function drawStreetMap(ctx: CanvasRenderingContext2D, w: number, h: number, f: MapFrame, selected: Bus | null, withVoice = false) {
+
   const expanded = f.mode === 'expanded';
-  const size = expanded ? Math.min(w * 0.82, h * 0.46) : Math.min(w * 0.39, h * 0.33);
-  const x = expanded ? (w - size) / 2 : w * 0.27 - size / 2;
+  const size = expanded ? Math.min(w * (withVoice ? 0.42 : 0.82), h * 0.46) : Math.min(w * 0.39, h * 0.33);
+  const x = expanded && !withVoice ? (w - size) / 2 : w * 0.27 - size / 2;
   const y = h * 0.82 - size;
   const cx = x + size / 2;
   const shape = () => {

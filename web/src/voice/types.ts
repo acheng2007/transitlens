@@ -24,10 +24,17 @@ export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 export type StartVoiceOptions = {
   /** App provides the plane closest to the center of view (or null). */
-  getCurrentPlane: () => Plane | null;
-  getNearbyPlanes: () => Plane[];
+  getCurrentPlane?: () => Plane | null;
+  getNearbyPlanes?: () => Plane[];
+  /** Transit app supplies a grounded request and validated action dispatcher. */
+  requestAnswer?: (question: string, signal: AbortSignal) => Promise<string>;
+  /** Freeze gaze context at wake activation, before the user turns their head. */
+  onCaptureStart?: () => void;
   onStateChange: (s: VoiceState) => void;
   /** What the user said (the question, after the wake phrase). */
+  onPartialTranscript?: (text: string) => void;
+  /** Continue listening briefly after a spoken reply, without another wake phrase. */
+  followUpMs?: number;
   onTranscript?: (text: string) => void;
   /** The spoken answer; the app shows it in the HUD. */
   onAnswer: (text: string) => void;
@@ -40,7 +47,7 @@ export type StartVoiceOptions = {
   endpoint?: string;
   /** Speech recognition language; default 'en-US'. */
   lang?: string;
-  /** After "hey grok" with no question, how long to wait for one. Default 8000. */
+  /** After "Hey Gemini" with no question, how long to wait for one. Default 8000. */
   questionTimeoutMs?: number;
   /** The question is sent once the user has been quiet this long (ms). Default 1300. */
   endOfQuestionSilenceMs?: number;
@@ -49,12 +56,14 @@ export type StartVoiceOptions = {
   /** Read answers aloud. Default true. */
   speak?: boolean;
   /**
-   * Endpoint that returns the answer as audio in Grok's voice; default '/api/voice/speak'.
+   * Optional endpoint that returns the answer as audio; default is browser speech.
    * Falls back to the browser's speechSynthesis if it fails. Pass null to always use the browser voice.
    */
   ttsEndpoint?: string | null;
   /** Override the recognizer (used by the dev page to fake transcripts). */
   recognizer?: Recognizer;
+  /** Disable microphone recognition while keeping typed questions and speech output. */
+  listenForWake?: boolean;
 };
 
 export type VoiceHandle = {

@@ -53,6 +53,7 @@ export default defineConfig({
     // One tunnel for everything: the phone only ever talks to this server.
     proxy: {
       '/api/buses': 'http://127.0.0.1:8003',
+      '/api/transit': 'http://127.0.0.1:8003',
       '/api/flights': 'http://127.0.0.1:8001',
       '/api/voice': 'http://127.0.0.1:8002',
     },
