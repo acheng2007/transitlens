@@ -1,0 +1,357 @@
+/* Based on web/src/style.css. Differences: the settings screen is laid out for landscape
+   (the app is locked to it), and there's no fullscreen "tap to resume" hint. */
+
+:root {
+  --bg: #000;
+  --fg: #f5f5f5;
+  --muted: #9aa0a6;
+  --accent: #4fc3f7;
+  --hud: rgba(79, 195, 247, 0.9);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Settings screen (landscape) */
+
+#settings-screen {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  /* Side padding clears a punch-hole camera: the app draws under the cutout. */
+  padding: 12px 48px;
+  text-align: center;
+}
+
+#settings-screen h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 220px));
+  gap: 10px 16px;
+  justify-content: center;
+  width: 100%;
+}
+
+#settings-screen label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-align: left;
+}
+
+#settings-screen select,
+#settings-screen input {
+  width: 100%;
+  padding: 8px;
+  font-size: 1rem;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #111;
+  color: var(--fg);
+}
+
+#done-btn {
+  padding: 12px 56px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #000;
+}
+
+#done-btn:disabled {
+  opacity: 0.5;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+/* Outlined pill: secondary action next to Done. */
+button.secondary,
+#cal-done {
+  padding: 11px 24px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border: 1.5px solid var(--accent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+}
+
+#cal-done {
+  padding: 11px 48px;
+}
+
+#cal-done.primary {
+  background: var(--accent);
+  color: #000;
+}
+
+/* Compass calibration (landscape: animation left, instructions + progress right) */
+
+#calibrate-screen {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  /* Side padding clears a punch-hole camera: the app draws under the cutout. */
+  padding: 12px 48px;
+}
+
+.cal-figure {
+  width: min(38vw, 320px);
+  flex: none;
+}
+
+.cal-figure path {
+  fill: none;
+  stroke: rgba(79, 195, 247, 0.35);
+  stroke-width: 2.5;
+  stroke-dasharray: 5 5;
+}
+
+.cal-phone rect {
+  fill: #11161c;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.cal-phone circle {
+  fill: var(--accent);
+}
+
+.cal-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 440px;
+}
+
+.cal-panel h1 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.cal-steps {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.cal-status {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cal-status p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.cal-ring {
+  width: 84px;
+  height: 84px;
+  flex: none;
+  transform: rotate(-90deg);
+}
+
+.cal-ring-bg,
+.cal-ring-fg {
+  fill: none;
+  stroke-width: 9;
+}
+
+.cal-ring-bg {
+  stroke: #1d252e;
+}
+
+.cal-ring-fg {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 263.9; /* 2 * pi * r (r = 42) */
+  stroke-dashoffset: 263.9;
+  transition: stroke-dashoffset 0.25s ease-out, stroke 0.25s;
+}
+
+#cal-percent {
+  position: absolute;
+  left: 0;
+  width: 84px;
+  text-align: center;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+#cal-detail {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+#cal-warning {
+  margin-top: 6px;
+  color: #ff9f0a;
+  font-size: 0.85rem;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+#settings-status {
+  min-height: 1.2em;
+  max-width: 560px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* Stereo view */
+
+#stereo {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+}
+
+.eye {
+  position: absolute;
+  top: 0;
+  overflow: hidden;
+}
+
+/* cover = fill the whole eye; widen the view with camera zoom, not by shrinking */
+.eye video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.eye-hud {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.eye-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--hud);
+  border-radius: 50%;
+}
+
+.debug {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 90%;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--muted);
+  font: 9px/1.3 ui-monospace, monospace;
+  white-space: nowrap;
+}
+
+.toast {
+  position: absolute;
+  left: 50%;
+  top: 60%;
+  transform: translateX(-50%);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.hud-error {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(180, 0, 0, 0.8);
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Settings button: top-right screen corner, outside both eye images (so it isn't seen in the
+   headset), inset from the rounded display corner. */
+#settings-btn {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 24px;
+  line-height: 44px;
+}
+
+#settings-btn:active {
+  background: rgba(79, 195, 247, 0.5);
+}

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#000000" />
+    <title>TransitLens</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <!-- The AR view opens on launch. Settings are hidden until opened (⚙ or long-press), or shown
+         with an error if the view can't start. -->
+    <div id="settings-screen" hidden>
+      <h1>⚙ Settings</h1>
+      <!-- Landscape-locked app: fields in a grid so everything fits without scrolling.
+           Radius comes first so the keyboard doesn't cover it. -->
+      <div class="fields">
+        <label>
+          Search radius (km)
+          <input id="radius-input" type="number" min="1" max="400" step="1" inputmode="numeric" placeholder="default: 5" />
+        </label>
+        <label>
+          Camera
+          <select id="camera-select"></select>
+        </label>
+        <label>
+          Lens spacing (mm)
+          <input id="ipd-input" type="number" min="50" max="80" step="1" inputmode="numeric" />
+        </label>
+      </div>
+      <div class="actions">
+        <button id="calibrate-btn" class="secondary">🧭 Calibrate compass</button>
+        <button id="done-btn">Done</button>
+      </div>
+      <p class="hint">
+        Shows live RTS buses within the search radius of your GPS position. Markers in the wrong direction? Calibrate the compass.<br />
+        In view: double-tap middle = fine-tune (then middle = next setting, left/right = adjust) · ⚙ top right or long-press = these settings · back = exit
+      </p>
+      <p id="settings-status"></p>
+    </div>
+    <!-- Compass calibration (from settings). Logic: src/compass-calibration.ts. -->
+    <div id="calibrate-screen" hidden>
+      <svg class="cal-figure" viewBox="0 0 200 120" aria-hidden="true">
+        <path id="cal-path" d="M100,60 C130,18 185,18 185,60 C185,102 130,102 100,60 C70,18 15,18 15,60 C15,102 70,102 100,60 Z" />
+        <g class="cal-phone">
+          <rect x="-8" y="-13" width="16" height="26" rx="3" />
+          <circle cx="0" cy="-9" r="1.5" />
+          <animateMotion dur="4s" repeatCount="indefinite" rotate="auto"><mpath href="#cal-path" /></animateMotion>
+        </g>
+      </svg>
+      <div class="cal-panel">
+        <h1 id="cal-title">🧭 Compass calibration</h1>
+        <p class="cal-steps">
+          Hold the phone and slowly draw a big figure 8 in the air, twisting your wrist so the screen faces up, down and
+          to each side. Keep away from metal, magnets and electronics.
+        </p>
+        <div class="cal-status">
+          <svg class="cal-ring" viewBox="0 0 100 100" aria-hidden="true">
+            <circle cx="50" cy="50" r="42" class="cal-ring-bg" />
+            <circle id="cal-ring" cx="50" cy="50" r="42" class="cal-ring-fg" />
+          </svg>
+          <span id="cal-percent">0%</span>
+          <div>
+            <p id="cal-quality">Waiting for the compass…</p>
+            <p id="cal-detail"></p>
+            <p id="cal-warning" hidden></p>
+          </div>
+        </div>
+        <button id="cal-done">Done</button>
+      </div>
+    </div>
+    <div id="stereo" hidden></div>
+    <button id="settings-btn" hidden aria-label="Settings">⚙</button>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

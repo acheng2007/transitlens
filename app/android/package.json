@@ -1,0 +1,28 @@
+{
+  "name": "transitlens-android",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "sync": "npm run build && cap sync android",
+    "apk": "npm run sync && node scripts/gradle.mjs assembleDebug",
+    "install-apk": "adb install -r native/app/build/outputs/apk/debug/app-debug.apk",
+    "assets": "node scripts/make-assets.mjs && capacitor-assets generate --android --androidProject native --assetPath assets/generated",
+    "apk:release": "npm run sync && node scripts/gradle.mjs assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/geolocation": "^8.2.2"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.2",
+    "@types/node": "^26.6.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  }
+}

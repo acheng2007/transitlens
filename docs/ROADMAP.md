@@ -1,6 +1,21 @@
 # TransitLens implementation roadmap
 
-Status: planning only.
+## Active checkpoint update
+
+The user's current implementation plan selects Live RTS Cardboard with iPhone support before synthetic bus demos.
+This supersedes the offline-demo-first order below for this checkpoint only.
+The live bus backend, shared Bus contract, web feed, transit HUD, dwell selection, and Safari permission/compass path are implemented.
+The native transit renderer uses the shared bus feed and HUD with native sensor bridges.
+Physical phone, headset, outdoor alignment, and APK packaging remain acceptance gates, as recorded in [verification](LIVE_RTS_VERIFICATION.md).
+Do not mark the physical live-Cardboard gate complete from desktop or mocked tests.
+The subsequent street-map milestone implements MapLibre/OpenFreeMap roads, shared compact/expanded controls, and an independent saved compass-distance limit defaulting to 1 mile.
+Gemini, synthetic buses, transit route overlays, arrivals, navigation, and Mobile AR remain outside this checkpoint.
+Physical iPhone acceptance for the new map remains pending.
+See [street-map verification](STREET_MAP_VERIFICATION.md).
+
+The remaining roadmap preserves the broader product direction and earlier milestone checklists as historical planning, rather than claiming each item is implemented.
+
+Status: upstream source imported; application migration has not started.
 No implementation milestone is complete.
 This roadmap follows the [PRD](PRD.md) and deliberately stops the first implementation task at the verified Cardboard bus demo.
 
@@ -25,6 +40,8 @@ The dependency order is:
               |
 4. Outdoor alignment and reliability
               |
+4a. Gemini transit copilot and interactive map
+              |
 5. Mobile AR using shared tracking
               |
 6. Transit enhancements and optional experiments
@@ -38,7 +55,7 @@ Do not mark those acceptance gates complete without their evidence.
 
 **Outcome:** a reproducible, unchanged baseline that the team can compare against throughout migration.
 
-- [ ] Import the designated upstream source into this repository, preserving license and attribution files that exist and recording the source revision.
+- [x] Import the designated upstream source into this repository, preserving license and attribution files that exist and recording the source revision.
 - [ ] Inspect the full repository, including web, bus-service, voice-service, fixtures, Android, and casting.
 - [ ] Record runtime versions, dependency installation, local startup, HTTPS phone access, and casting instructions.
 - [ ] Run the original desktop fixture experience and production build.
@@ -51,7 +68,8 @@ Do not mark those acceptance gates complete without their evidence.
 If access to hardware is unavailable, finish inspection and setup, record the blocker, and obtain the required baseline observations before proceeding with the migration.
 
 Initial reconnaissance successfully ran the original web production build.
-No source was imported here.
+All 138 tracked upstream files were subsequently imported here unchanged from that revision, excluding its Git metadata, local dependencies, generated builds, and untracked files.
+The existing TransitLens documentation and repository history were preserved.
 Interactive browser verification did not finish, and hardware verification has not occurred.
 Recheck the revision and dependencies when implementation begins.
 
@@ -81,6 +99,8 @@ No live service changes belong in this milestone.
 - [ ] Preserve compass ticks, pinhole placement, off-screen guidance, and useful radar behavior.
 - [ ] Display miles and mph where appropriate; omit unknown speed, delay, and occupancy values.
 - [ ] Do not show an arrival time without prediction data or imply unknown delay status means on time.
+- [ ] Preserve the transit voice stack and grounded, explicitly labeled demo responses.
+- [ ] Keep the compass and bottom minimap visible, including during voice status or subtitles.
 
 ### Start flow and development
 
@@ -167,12 +187,59 @@ Check demo again with the backend unavailable.
 Decide and document the team's acceptable bearing error from observed conditions rather than claiming pixel-perfect geographic alignment from untested sensors.
 UI layout should still receive pixel-level visual review.
 
+## 4a. Build the Gemini transit copilot and interactive map
+
+**Outcome:** the user can discover routes, enlarge the minimap, highlight service to a destination, and request guidance to a boarding stop through voice.
+This is core product work under the [PRD product update](PRD.md#product-update-interactive-gemini-transit-copilot), following the geographic Cardboard foundation.
+Preserve wake-phrase interaction, speech capture, voice state feedback, speech output, and browser speech fallback; migrate the activation phrase to "Hey Gemini".
+
+- [ ] Replace the inherited xAI chat configuration with server-side `GEMINI_API_KEY` and a configurable Gemini model using Google's supported SDK.
+- [ ] Verify function-calling and structured-output support for the selected model, then test the typed transit tool loop.
+- [ ] Remove reliance on xAI remote speech output; initially use browser speech synthesis, keeping any future Gemini speech integration separate.
+- [ ] Update wake matching, assistant labels, prompts, health metadata, environment examples, and voice development fixtures consistently.
+
+### Grounded transit tools
+
+- [ ] Verify and ingest route patterns/shapes, stop coordinates, route directions, and available service information from authoritative data.
+- [ ] Implement deterministic nearby-stop, route-detail, and destination-serving-route queries with stable IDs and freshness/provenance.
+- [ ] Resolve named places to candidate destinations and nearby stops; ask a spoken clarification when ambiguous.
+- [ ] Define direct-service matching and explicitly distinguish service coverage, current active vehicles, and predictions.
+- [ ] Give Gemini typed transit tools rather than expecting it to infer service from route names or destination strings.
+- [ ] Keep missing prediction or pedestrian-routing data explicit; do not invent arrivals or walkable paths.
+
+### Shared map state and actions
+
+- [ ] Add shared compact/expanded map mode, bounded zoom, highlighted routes, selected stop/destination, and guidance state.
+- [ ] Keep the compact map at the bottom while Gemini listens, thinks, and speaks; arrange subtitles to avoid hiding it.
+- [ ] Render verified route geometry and distinguish bus, stop, destination, and user markers.
+- [ ] Define and validate typed map actions in the voice response; apply them through the application state layer.
+- [ ] Preserve identical action state across both eyes and casting, with no state mutation inside drawing.
+- [ ] Handle request identity, cancellation, stale responses, duplicate retries, unsupported actions, and failure feedback.
+- [ ] Make "close the map" restore compact mode while retaining selections, and "cancel guidance" clear guidance.
+
+### Voice-driven discovery and guidance
+
+- [ ] Use focused bus, selected route, destination, stop, and current map state as explicit conversation context.
+- [ ] Support "What bus is that?", "Show routes to Reitz Union", "Enlarge the minimap", "Highlight route 38", and "Guide me to a stop for that route."
+- [ ] Return a brief spoken answer plus validated UI actions; do not claim a successful visual change when action application failed.
+- [ ] Select a stationary boarding stop with the right route/direction instead of directing the user toward a moving bus.
+- [ ] Use verified pedestrian routing when available; otherwise label stop-bearing guidance as approximate direction and distance.
+- [ ] Keep the headset experience fully usable while stationary; verify walking guidance through handheld mode or a suitable separate setup.
+- [ ] Add synthetic route shapes, stops, destinations, and clearly marked scripted command scenarios to the demo.
+- [ ] Keep deterministic typed-transcript testing independent of browser speech recognition and cloud Gemini availability.
+
+**Gate:** verify speech/transcript → intent → transit tool → validated action → visible map change → accurate spoken result.
+Cover ambiguous destinations, multiple route directions, no service, stale data, unknown IDs, invalid actions, delayed replies, repeated commands, cloud failure, and microphone denial.
+Verify "expand → show matching routes → select stop → guidance → cancel → compact map" in both eyes and casting.
+Confirm the compass, bus focus, and camera remain responsive throughout, and that scripted offline behavior is not presented as live Gemini.
+
 ## 5. Add Mobile AR with shared tracking
 
 **Outcome:** one full-screen camera/HUD view uses exactly the same feed, heading, geometry, and focus state as Cardboard.
 
 - [ ] Add the Mobile AR layout option after live Cardboard passes its gate.
 - [ ] Share camera acquisition, bus feed, geolocation, orientation, focus state, and error handling.
+- [ ] Reuse Gemini commands, selected routes, compact/expanded map state, and stop guidance without a second interaction system.
 - [ ] Adjust viewport layout and effective camera crop/FOV through the existing projection helpers.
 - [ ] Keep logical target selection independent of render calls and document expected FOV differences from viewport aspect ratio.
 - [ ] Ensure the same bearing yields equivalent angular alignment in either layout, even when pixel positions differ.
@@ -189,10 +256,10 @@ Each enhancement must preserve demo, live Cardboard, and shared tracking behavio
 | Order | Enhancement | Required evidence |
 | --- | --- | --- |
 | 1 | Route colors and richer delay/occupancy labels | Verified RTS metadata, unknown-state handling, readable contrast |
-| 2 | Nearby bus stops | Verified stop coordinates/IDs, distinct markers, uncluttered HUD |
+| 2 | Richer stop information | Build on milestone 4a stop data with additional verified transit details |
 | 3 | Arrival predictions | Authoritative prediction data associated with a specific stop/direction, freshness and unavailable states |
 | 4 | Bus motion smoothing | Verified speed units/heading, bounded extrapolation, correction on fresh GPS, stopped-bus behavior |
-| 5 | Hands-free head gestures or voice | Deliberate activation, no regression to gaze, accurate bus context |
+| 5 | Additional head gestures | Deliberate activation without regression to gaze or core voice controls |
 | 6 | Pretrained bus detection | Acceptable on-device performance, separate geospatial path, no dependency for baseline operation |
 | 7 | Route OCR and sensor fusion | Measured matching confidence, conflict handling, fallback to geographic identity |
 
@@ -201,7 +268,7 @@ Road routing, direction, stops, and service behavior make that an unreliable arr
 
 ## Source migration map
 
-Paths below refer to the inspected upstream source, which has not yet been imported into this repository.
+Paths below refer to the imported upstream source.
 Revalidate the map against the revision selected for import.
 KEEP means preserve the working implementation, with only a reproduced issue justifying a targeted change.
 MODIFY means adapt behavior in place.
