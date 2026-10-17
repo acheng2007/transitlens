@@ -52,7 +52,7 @@ export type Settings = {
    */
   dataMode: DataMode;
   viewMode: ViewMode;
-  /** "Hey Grok" voice assistant (Allison's module in src/voice/). */
+  /** "Hey Grok" voice assistant (inherited module in src/voice/). */
   voiceEnabled: boolean;
   /** Plane search radius. null = flight-service's defaults (15 km live, 40 km demo). */
   radiusKm: number | null;

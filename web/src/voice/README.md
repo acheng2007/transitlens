@@ -1,9 +1,9 @@
-# web/src/voice/ — owner: Allison
+# Browser voice module
 
 Browser-side voice module: wake phrase, speech-to-text, text-to-speech, calls `/api/voice/ask`.
 Exports `startVoice(...)` using the interfaces in [types.ts](types.ts).
 
-## Use (Jaiden's app)
+## Usage
 
 ```ts
 import { startVoice } from './voice';
@@ -61,7 +61,7 @@ speech recognition (desktop Chrome works for a smoke test; Android Chrome is the
 - Chrome stops continuous recognition after a few seconds of silence; the wrapper restarts
   it ~150 ms later. Expect a small gap where a wake phrase can be missed.
 - Recognition needs network (Google's servers), so it fails on ngrok if the phone's data is off.
-- Must be started from a user gesture. Jaiden's Start tap is that gesture. It also "unlocks" the
+- Must be started from a user gesture. The application’s Start tap is that gesture. It also "unlocks" the
   `<audio>` element used for Grok's voice; if `startVoice` runs outside a gesture, remote audio
   may be blocked and the module falls back to the browser voice.
 - Grok audio adds ~1.5 s before the answer starts (fetch whole MP3, then play). Streaming

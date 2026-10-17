@@ -1,5 +1,5 @@
 // Types for the voice module. Plane is imported from the inherited aircraft module;
-// Jaiden's app can import it from here or use any structurally compatible type.
+// The application can import it from here or use any structurally compatible type.
 
 export type Plane = {
   id: string;

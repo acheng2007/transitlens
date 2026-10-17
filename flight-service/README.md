@@ -1,4 +1,4 @@
-# flight-service/ — owner: Wesley
+# Flight service
 
 Python FastAPI service on port 8001. Serves the inherited `GET /api/flights/nearby` endpoint defined in [app/main.py](app/main.py).
 

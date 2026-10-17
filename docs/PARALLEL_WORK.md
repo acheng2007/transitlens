@@ -18,11 +18,10 @@ APK packaging is blocked by the missing JDK 21 toolchain.
 
 ## Assignment map
 
-Each row should have one accountable owner and one branch.
-An owner can be an AI agent, a human developer, or a human working with an AI.
-Several owners may work simultaneously, but each owns its listed paths until the team explicitly agrees otherwise.
+Use a separate branch for each workstream.
+AI agents and human collaborators can work simultaneously within agreed file boundaries.
 
-| ID | Category | Best fit | Primary owned paths | First useful delivery |
+| ID | Category | Best fit | Primary paths | First useful delivery |
 | --- | --- | --- | --- | --- |
 | A | Shared contracts and integration | Lead developer + AI | `shared/`, `web/src/map-state.ts`, `web/src/main.ts`, shared settings/startup wiring | Reviewed contracts, request lifecycle, and integration seams |
 | B | Transit data and deterministic discovery | Backend developer or AI | `bus-service/` | Authoritative route/direction/stop data and tested direct-service queries |
@@ -33,10 +32,10 @@ Several owners may work simultaneously, but each owns its listed paths until the
 | G | Demo scenarios and end-to-end verification | QA developer or AI | New transit demo modules, `web/tests/`, backend test scenarios | Deterministic transit/voice scenarios and automated journey checks |
 | H | Alternate renderers and delivery | Platform developer + AI | `web/src/stereo.ts`, `web/src/cast/`, `app/android/`, delivery tooling | Staged Mobile AR, phone-to-laptop casting validation, native packaging |
 
-A owns final edits to shared startup and state wiring.
+A integrates final edits to shared startup and state wiring.
 B and C can add service-local test files, while G coordinates cross-service scenarios and browser end-to-end tests.
 E and D should use separate style files for substantial new presentation work; A wires imports or agrees specific regions in `style.css` and `index.html` before concurrent edits.
-F records findings and assigns fixes to the responsible owner instead of simultaneously editing that owner's source files.
+F records findings and routes fixes to the relevant workstream to avoid concurrent edits to the same source files.
 H's platform changes are staged separately, so native work does not force web renderer changes before they are ready.
 
 ## A. Shared contracts and integration
@@ -212,13 +211,13 @@ Do not point multiple editing sessions at this same working directory.
 Use branches such as `work/transit-data`, `work/gemini-service`, `work/browser-voice`, and `work/map-overlays`.
 Merge reviewed contracts first and rebase dependent branches before integration.
 Do not duplicate schemas, change another stream's API unilaterally, or let an agent merge unrelated work to resolve a conflict.
-If a shared path must change, agree the interface and owner before editing.
+If a shared path must change, agree the interface and responsible workstream before editing.
 
 Each assignment should copy this prompt and fill in the bracketed fields:
 
 > Work only on stream [ID] and its first assignment in docs/PARALLEL_WORK.md.
 > Read AGENTS.md, README.md, docs/PRD.md, and the relevant verification records.
-> Deliver [specific user-visible outcome] on branch [branch], primarily in [owned paths].
+> Deliver [specific user-visible outcome] on branch [branch], primarily in [relevant paths].
 > Use contract revision [commit]; coordinate shared-file changes with stream A.
 > Preserve Cardboard, compass, minimap, calibration, failure behavior, and Android compatibility.
 > Begin bug fixes with a user-facing reproduction and run meaningful focused checks.

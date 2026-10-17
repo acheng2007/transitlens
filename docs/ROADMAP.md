@@ -13,7 +13,7 @@ Gemini, synthetic buses, transit route overlays, arrivals, navigation, and Mobil
 Physical iPhone acceptance for the new map remains pending.
 See [street-map verification](STREET_MAP_VERIFICATION.md).
 
-For current parallel assignments, ownership boundaries, dependencies, and first tasks, use [the parallel work plan](PARALLEL_WORK.md).
+For current parallel assignments, file coordination, dependencies, and first tasks, use [the parallel work plan](PARALLEL_WORK.md).
 The remaining roadmap preserves the broader product direction and earlier milestone checklists as historical planning, rather than claiming each item is implemented.
 
 

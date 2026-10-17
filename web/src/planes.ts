@@ -1,4 +1,4 @@
-// Plane data: the shared fixture (works with no backend) or Wesley's flight-service.
+// Plane data: the shared fixture (works with no backend) or the flight service.
 
 import fixture from '../../shared/fixtures/demo-planes.json';
 

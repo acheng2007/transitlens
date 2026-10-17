@@ -12,7 +12,7 @@ Mode changes retain extent.
 Shared state carries current GPS and the last usable response center separately.
 Cached vehicles are rebased to current GPS before compass filtering and dwell selection.
 
-`web/src/street-map.ts` owns one offscreen MapLibre instance per session, using the documented Vite bundled worker URL and OpenFreeMap dark style.
+`web/src/street-map.ts` maintains one offscreen MapLibre instance per session, using the documented Vite bundled worker URL and OpenFreeMap dark style.
 Road colors and label sizes are tuned for the small HUD.
 Its 15 Hz update loop is separate from the camera/compass animation loop, with pixel ratio capped at 2.
 Bus overlays use MapLibre's own projection, and radar fallback uses the matching Web Mercator transform.
