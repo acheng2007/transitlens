@@ -1,101 +1,105 @@
 # TransitLens
 
-TransitLens is an augmented reality interface for Gainesville RTS buses.
-Point a phone toward the street and see nearby buses at their real geographic bearings, identified by route and destination.
-Look directly toward a bus to reveal its information card.
+Look down a Gainesville street through Google Cardboard and identify nearby RTS buses by route and geographic bearing.
+The existing camera, stereo layout, compass, pinhole projection, calibration controls, bottom minimap, and laptop casting power the experience.
 
-**Google Cardboard is the primary experience.**
-The phone shows the rear camera and matching HUD overlays in both eyes while device orientation lets the rider look around naturally.
-Mobile AR is a secondary, full-screen view powered by the same tracking state.
+## Current checkpoint
 
-## What we are building
+The web app now defaults to Live RTS, Google Cardboard, and a 5 km radius.
+The server-side bus service retrieves and normalizes vehicles; the HUD shows route markers, dwell-selected transit cards, and nearby buses on the persistent minimap.
+Both eyes and casting receive the same selection state.
+Missing transit metadata stays unknown, and no arrival estimates are invented.
 
-```text
-Choose Cardboard + Live RTS
-            |
-Grant camera, orientation, and location access
-            |
-Put the phone in the headset and look around
-            |
-See bus markers at their geographic bearings
-            |
-Hold your gaze toward a bus to reveal route details
+The start screen scrolls, fullscreen and orientation locking are optional, and motion permission is requested directly from Start.
+Safari's magnetic compass anchors the full rear-camera rotation, with location/date WMM2025 correction applied once.
+All iPhones require device-specific size and FOV calibration.
+Physical iPhone, Android browser, headset, and outdoor alignment checks remain pending, so iPhone support is not yet certified.
+
+This user-authorized live-first checkpoint supersedes the earlier offline-demo-first sequence.
+Synthetic buses, Gemini integration, transit route overlays, predictions, navigation, and Mobile AR are deferred.
+The inherited voice, aircraft fixtures, virtual environment, and native aircraft code remain in the repository for later work and compatibility; the TransitLens web flow disables their entry points.
+Live RTS never substitutes demo vehicles after a failure.
+
+## Run locally
+
+Start [bus-service](bus-service/README.md) with a server-only `RTS_API_KEY` in its ignored `.env`:
+
+```sh
+cd bus-service
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --env-file .env --host 127.0.0.1 --port 8003
 ```
 
-The core MVP is simple: **live Gainesville buses appear at approximately correct real-world bearings while the user looks around through Google Cardboard.**
-This is geographic AR: phone GPS, bus GPS, and camera heading determine where labels appear.
-Computer vision, SLAM, ARKit, and ARCore are not dependencies.
+In another terminal:
 
-A focused bus card identifies the route and destination, distance, and available vehicle information.
-Speed, delay status, and passenger load may be missing and must degrade gracefully.
-Arrival times will only appear when backed by prediction data; distance and speed alone are not an arrival prediction.
-
-Demo mode is a first-class experience.
-It uses 8-15 synthetic buses around a fixed UF / Reitz Union location, ignores live GPS, and keeps live phone orientation.
-It must operate without an RTS connection.
-Desktop development supports the fixture, keyboard heading controls, a heading slider, and a camera-free background.
-
-## Current status
-
-This repository currently contains planning documents only.
-Implementation is paused until the team is ready to begin.
-No application source has been imported or modified here, and there is no local app startup command yet.
-
-We will adapt its aircraft experience to buses while preserving its working camera, stereo layout, device orientation, heading smoothing, geographic math, pinhole projection, calibration, and casting infrastructure.
-Its web production build passed, but browser, physical phone, and headset behavior have not been verified.
-The baseline verification milestone remains open.
-
-## Documents
-
-- [Product requirements](docs/PRD.md): the supplied product specification and first implementation milestone.
-- [Implementation roadmap](docs/ROADMAP.md): ordered milestones, acceptance gates, source file migration map, and contributor workflow.
-
-Use the PRD for intended product behavior and the roadmap to choose the next bounded task.
-When a milestone lands, update its status and record what was actually tested.
-
-## Architecture direction
-
-```text
-RTS / BusTime API             Local Gainesville fixture
-       |                               |
-Server-side bus-service                 |
-       |                               |
-GET /api/buses/nearby                   |
-       +---------------+---------------+
-                       |
-              Shared bus tracking state
-       GPS + heading + bearings + focus selection
-                       |
-           +-----------+-----------+
-           |                       |
-   Cardboard renderer       Mobile AR renderer
-   two camera/HUD views     one camera/HUD view
+```sh
+cd web
+npm install
+npm run dev
 ```
 
-Bus positions refresh from the feed at a controlled interval.
-Overlay positions update every animation frame using the latest heading.
-Both eyes, casting, and eventually mobile AR consume the same tracking and focus state.
-Renderers must not independently select targets or maintain their own feeds.
+Open `http://localhost:5173/` on a phone through HTTPS, such as a tunnel to Vite.
+Camera, motion, and location permissions require a secure context.
+Rotate manually to landscape if the browser cannot lock orientation.
+Double-tap the middle to unlock calibration, then tap the middle to cycle controls and the left/right thirds to adjust.
+Long-press for settings and retry permissions.
 
-External RTS calls happen only on the server.
-`RTS_API_KEY` must never enter browser code, client environment variables, logs, or committed configuration.
-The live integration and exact available RTS fields must be verified before implementation.
+Open `http://localhost:5173/?dev=1` for desktop development with arrow-key heading controls and a clearly labeled fixed Reitz Union location.
+Add `&camera=off` for a labeled blank background without requesting a camera.
+Press Escape to return to settings on a keyboard.
+Desktop mode fetches live RTS vehicles around that public location and does not use desktop GPS.
+Enable casting and open `/cast.html` on the laptop to view the shared HUD over WebRTC.
+The Vite proxy forwards `/api/buses` to port 8003 and retains the legacy service proxies.
 
-## Contributing
+If RTS fails, cached buses remain with their retrieval age and `LIVE DATA TEMPORARILY UNAVAILABLE`.
+A successful empty result says `No nearby buses`.
+GPS waiting, denial, compass/correction waiting, and camera failure have distinct messages.
+Camera failure allows a labeled blank background.
+The minimap stays visible with a location fix, including an empty feed or unavailable heading.
+Without heading it explicitly uses north up.
 
-Start with baseline verification, then implement the local bus demo before changing the live service.
-The first implementation checkpoint is a bus model, Gainesville fixture, and bus-focused Cardboard HUD.
-Stop and verify that checkpoint before starting live data work.
+## Street map and compass distance
 
-Preserve existing orientation transforms, smoothing, projection, and Cardboard calibration unless a reproduced problem requires a focused change.
-Account for the Android wrapper, which imports shared web modules, when changing their interfaces.
-Keep demo mode operational at every milestone.
-Do not invent arrival predictions or show fabricated demo vehicles as live RTS data.
+The bottom circular map uses MapLibre and OpenFreeMap streets with reported live vehicle positions, without road snapping.
+It follows GPS and heading, independently of compass filtering.
+Map opens a translucent expanded view in both eyes and suppresses the focused card.
+Close returns to the compact map and preserves zoom.
+Use the duplicated Map/Close and +/− buttons, or M, +/−, and Escape on a keyboard.
+Escape closes the expanded map before leaving for settings.
+Map controls do not trigger calibration.
 
-Make changes in reviewable units with explicit acceptance criteria.
-Reproduce bugs through the user-facing flow before editing code, and verify the result in that flow afterward.
-Record hardware-only checks as pending when the required phone, headset, or outdoor test is unavailable.
-Stretch features begin only after the live Cardboard acceptance gate passes.
+The saved Compass distance (miles) defaults to 1 mile (1.609344 km).
+All nearby disables this filter.
+The limit applies to individual compass buses, edge arrows, dwell selection, and cards, while the map keeps the entire fetched feed.
+Increasing this limit does not fetch beyond Search radius.
+The map initially covers that search radius; each zoom changes its center-to-edge extent by a factor of two within 0.1-400 km.
+Without GPS it waits for location; without compass it uses north up and labels the limitation.
+Tile/WebGL failures show a labeled radar fallback without interrupting the compass or camera.
+Roads require network access.
+Map attribution is included in the headset and cast pixels.
 
-The roadmap prioritizes product quality, robustness, and maintainability over minimizing implementation effort.
-It keeps the scope ordered so contributors and AI agents can build incrementally without destabilizing the primary experience.
+One map renderer updates at most 15 times per second, with buffer pixel ratio capped at 2.
+Both eyes and casting copy its composite frame.
+Typed map actions in `web/src/map-state.ts` prepare shared controls for a later Gemini integration.
+No assistant, destination search, route discovery, stops, arrivals, or navigation are added here.
+
+## Verification
+
+```sh
+cd web
+npm test
+npm run build
+```
+
+Backend tests and setup are in [bus-service/README.md](bus-service/README.md).
+See [checkpoint verification](docs/LIVE_RTS_VERIFICATION.md) for completed checks and remaining physical-device gates.
+Android still uses its inherited aircraft entry point; its shared-module compatibility build is checked separately from the web bus migration.
+
+## Product direction
+
+Gemini remains a planned transit copilot with authoritative route discovery and validated map actions after geographic Cardboard is proven.
+See [PRD](docs/PRD.md), [roadmap](docs/ROADMAP.md), and [agent instructions](AGENTS.md).
+
+[CLAUDE.md](CLAUDE.md) retains the original architecture and provenance.

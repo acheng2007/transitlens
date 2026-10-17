@@ -1,0 +1,52 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { compassLimitKm, compassBuses, createMapState, applyMapAction, mapPoint } from '../src/map-state.ts';
+import { relativeBuses, createBusFocus } from '../src/buses.ts';
+import type { Bus } from '../../shared/transit.ts';
+const center = { lat: 29.6465, lon: -82.3478 };
+const bus: Bus = { id: 'one', route: '38', destination: null, ...center, headingDeg: null, speedMph: null, delayed: null, passengerLoad: null, distanceKm: 1.609344, bearingDeg: 0 };
+test('one mile is inclusive per vehicle, retains duplicate routes on map and clears excluded focus', () => {
+  assert.equal(compassLimitKm(1), 1.609344);
+  const all = [bus, { ...bus, id: 'two', distanceKm: 1.609345 }];
+  const filtered = compassBuses(all, compassLimitKm(1));
+  assert.deepEqual(filtered.map(b => b.id), ['one']);
+  assert.equal(all.length, 2);
+  assert.equal(compassBuses(all, null).length, 2);
+  const focus = createBusFocus();
+  focus.update(filtered, 0, 0);
+  assert.equal(focus.update(filtered, 0, 650), 'one');
+  assert.equal(focus.update(compassBuses(all, 0.1), 0, 700), null);
+  assert.equal(compassLimitKm(-1), 1.609344);
+});
+test('typed map actions preserve extent across mode changes and reject invalid values', () => {
+  let state = createMapState(5);
+  state = applyMapAction(state, { type: 'set_map_extent', extentKm: 0.001 });
+  assert.equal(state.extentKm, 0.1);
+  state = applyMapAction(state, { type: 'set_map_extent', extentKm: 1000 });
+  assert.equal(state.extentKm, 400);
+  for (const mode of ['expanded', 'compact'] as const) state = applyMapAction(state, { type: 'set_map_mode', mode });
+  assert.equal(state.extentKm, 400);
+  assert.equal(applyMapAction(state, { type: 'set_map_extent', extentKm: NaN }), state);
+  assert.equal(applyMapAction(state, { type: 'set_map_extent', extentKm: -1 }), state);
+});
+test('Mercator projection rotates heading up, wraps north and doubles offsets on zoom', () => {
+  const state = { ...createMapState(5), center, headingDeg: 0 };
+  assert.deepEqual(mapPoint(center, state, 512), [256, 256]);
+  const east = { ...center, lon: center.lon + 0.01 };
+  const northUp = mapPoint(east, state, 512);
+  assert.ok(northUp[0] > 256);
+  const eastUp = mapPoint(east, { ...state, headingDeg: 90 }, 512);
+  assert.ok(eastUp[1] < 256);
+  assert.ok(Math.abs(eastUp[0] - 256) < 1e-6);
+  assert.deepEqual(mapPoint(east, { ...state, headingDeg: 360 }, 512), northUp);
+  assert.equal(mapPoint(east, { ...state, headingDeg: null }, 512)[0], northUp[0]);
+  assert.ok(Math.abs(mapPoint(east, { ...state, extentKm: 2.5 }, 512)[0] - 256 - 2 * (northUp[0] - 256)) < 1e-6);
+});
+test('GPS movement rebases cached vehicle distance and bearing', () => {
+  const atUser = relativeBuses([bus], center)[0];
+  assert.equal(atUser.distanceKm, 0);
+  const moved = relativeBuses([bus], { ...center, lon: center.lon - 0.01 })[0];
+  assert.ok(moved.distanceKm > 0.9 && moved.distanceKm < 1);
+  assert.ok(Math.abs(moved.bearingDeg - 90) < 0.01);
+  assert.equal(bus.distanceKm, 1.609344);
+});

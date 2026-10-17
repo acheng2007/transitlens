@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- Debug builds only (applicationIdSuffix ".debug"): tell the two installs apart in the launcher. -->
+<resources>
+    <string name="app_name">SkyLens (debug)</string>
+    <string name="title_activity_main">SkyLens (debug)</string>
+</resources>

@@ -2,9 +2,47 @@
 
 ## AR Gainesville RTS Bus Identifier
 
-Status: supplied product specification, saved before implementation.
+Status: product specification with an active live-first implementation checkpoint.
 The implementation roadmap is in [ROADMAP.md](ROADMAP.md).
-The final section preserves the originally requested first implementation task; execution is currently paused at the user's request.
+The historical first task below is superseded by the current user-authorized checkpoint.
+
+## Current implementation checkpoint: Live RTS Cardboard
+
+The latest user instruction authorizes a live-first web migration for iPhone Safari and Android Chrome.
+This supersedes the earlier requirement to implement an offline bus demo first.
+The current bounded scope is bus-service, normalized live vehicles, route-first compass markers, dwell cards, persistent minimap, casting, permission recovery, and iPhone sensor handling.
+The street-map milestone adds OpenFreeMap roads, compact/expanded shared map controls, and a saved independent 1-mile compass filter.
+Gemini, synthetic buses, transit route overlays, arrivals, navigation, and Mobile AR are deferred.
+The longer-term product requirements below remain planned.
+See [verification evidence](LIVE_RTS_VERIFICATION.md) before claiming hardware support or geographic alignment.
+
+## Product update: interactive Gemini transit copilot
+
+Gemini API replaces Grok as the planned assistant provider.
+Use server-side `GEMINI_API_KEY`, with "Hey Gemini" as the planned wake phrase.
+Preserve the existing speech interaction infrastructure, initially using browser speech recognition and synthesis.
+The original specification below retains historical Grok examples; this update supersedes that provider choice.
+
+This update records the user's subsequent direction and takes precedence over conflicting priorities in the original specification below.
+The desired experience feels similar to Sky-C2 adapted to Gainesville buses, with a game-like transit HUD.
+Preserve the top compass, bottom minimap, and existing Gemini capabilities as part of the intended product.
+Gemini must grow beyond answering questions about the focused vehicle into controlling the map and helping discover routes.
+
+Example requests include "Show me all routes that go to this location" and "Enlarge the minimap to show routes around me and guide me towards them."
+Support route highlighting, compact/expanded map views, destination clarification, boarding-stop selection, and cancellation through voice.
+Keep the compact minimap visible during voice responses.
+Share all map, focus, route, and guidance state across both Cardboard eyes, casting, and Mobile AR.
+
+Use authoritative routes, stops, patterns, service information, and available predictions to ground answers.
+Gemini requests transit tools and returns structured actions; deterministic application code validates and applies those actions.
+Guide to stationary boarding stops rather than moving buses, distinguishing approximate directional cues from verified pedestrian routing.
+Direct-route discovery is in scope; a general transfer-based journey planner is not required initially.
+
+Gemini transit interactions are core planned functionality after the geographic Cardboard foundation, rather than optional voice stretch work.
+This supersedes the original voice-only-as-stretch framing and the blanket route-planning non-goal only for the bounded discovery and stop-guidance scope above.
+The first implementation checkpoint remains the offline bus-focused Cardboard demo.
+No application implementation is authorized by this documentation update alone.
+See [AGENTS.md](../AGENTS.md) and [the roadmap's transit copilot milestone](ROADMAP.md#4a-build-the-gemini-transit-copilot-and-interactive-map) for implementation guidance.
 
 ## Product Vision
 

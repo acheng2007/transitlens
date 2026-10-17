@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#000000" />
+    <title>TransitLens</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="start-screen">
+      <h1>TransitLens</h1>
+      <label>
+        Phone
+        <select id="preset-select"></select>
+      </label>
+      <label>
+        Lens spacing (mm)
+        <input id="ipd-input" type="number" min="50" max="80" step="1" />
+      </label>
+      <label>
+        Camera
+        <select id="camera-select"></select>
+      </label>
+      <label>
+        View
+        <select id="view-select">
+          <option value="ar">Google Cardboard</option>
+        </select>
+      </label>
+      <label>
+        Data
+        <select id="data-select">
+          <option value="live">Live RTS</option>
+        </select>
+      </label>
+      <label>
+        Search radius (km)
+        <input id="radius-input" type="number" min="1" max="400" step="1" inputmode="numeric" placeholder="5 km" />
+      </label>
+      <label>Compass distance (miles)<input id="compass-distance" type="number" min="0.01" step="any" value="1" inputmode="decimal" /></label>
+      <label class="checkbox"><input id="compass-all" type="checkbox" />All nearby</label>
+      <p class="hint">Compass distance filters individual buses and does not fetch beyond the search radius.<br>Map: M to open/close, + / − to zoom. Escape closes the map first.</p>
+      <label class="checkbox">
+        <input id="cast-check" type="checkbox" />
+        Cast to laptop (open /cast.html there)
+      </label>
+      <button id="start-btn">Start</button>
+      <p class="hint">Rotate the phone to landscape. All iPhones need size and FOV calibration.<br>In view: double-tap middle = calibrate (then middle = next setting, left/right = adjust) · long-press = back to this screen</p>
+      <p id="start-status"></p>
+    </div>
+    <div id="stereo" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
