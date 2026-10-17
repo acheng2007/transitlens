@@ -1,5 +1,5 @@
 // Angle helpers and the camera projection used to place labels.
-// Conventions (see CLAUDE.md): degrees, clockwise from true north, [0, 360).
+// Conventions: degrees, clockwise from true north, [0, 360).
 
 export const toRad = (d: number) => (d * Math.PI) / 180;
 export const toDeg = (r: number) => (r * 180) / Math.PI;

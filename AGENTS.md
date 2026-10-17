@@ -16,6 +16,7 @@ Do not remove the inherited voice stack or minimap during migration.
 
 Read [README.md](README.md), [the PRD and its product update](docs/PRD.md), and [the implementation roadmap](docs/ROADMAP.md) before changing behavior.
 This file governs work in this repository.
+Use this file for current project instructions and [the parallel work plan](docs/PARALLEL_WORK.md) for collaborator assignments.
 The current user's instructions take precedence over repository guidance.
 
 ## Current state and immediate scope
