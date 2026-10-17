@@ -18,10 +18,11 @@ uvicorn main:app --host 127.0.0.1 --port 8002 --reload
 
 Run bus-service on port 8003 with its server-side RTS key, and web on port 5173.
 `BUS_SERVICE_URL` overrides the bus-service origin; it is never supplied by the browser.
-`GEMINI_MODEL` defaults to `gemini-3.5-flash-lite` and must support function calling.
+`GEMINI_MODEL` defaults to `gemini-3.8-flash` and must support function calling.
 Health reports configuration, not successful provider connectivity.
 Without a Gemini key, or on provider failure, replies explicitly say Gemini is unavailable and summarize only verified focused-bus data if available.
-No camera frames or precise user coordinates are sent to Gemini.
+Ordinary questions send no camera frames or precise user coordinates to Gemini.
+An explicit bus-sign request can include one bounded JPEG still, which is not retained in history.
 The voice service uses user coordinates only to retrieve the nearby transit context from bus-service.
 Browser speech recognition may use the browser vendor's network service.
 
@@ -43,20 +44,25 @@ curl localhost:8002/api/voice/ask -H 'content-type: application/json' -d '{
 
 The example ID must exist in the current RTS feed to resolve.
 The service re-fetches the authoritative nearby snapshot rather than accepting client-supplied vehicle facts.
-It provides `get_transit_context` and `set_map_view` tools to Gemini, preserving model content and thought signatures between calls.
+It provides `get_transit_context`, `set_map_view`, `find_routes`, `highlight_route`, `guide_to_stop` and `cancel_guidance` tools to Gemini, preserving model content and thought signatures between calls.
 The initial call requires the transit-context tool; subsequent calls can prepare map changes.
-A request allows four model rounds, four tool calls per round, eight prepared actions, and twelve seconds of Gemini work.
+A request allows six model rounds, four tool calls per round, eight prepared actions, and twenty-five seconds of Gemini work.
 Bus-service retrieval has a separate four-second timeout.
 Unavailable, cached/stale, and older-than-90-second snapshots remain explicit.
 
 Responses contain `requestId`, `answer`, `actions`, `source` (`gemini` or `local`), and the resolved `focusedBusId`.
-Actions are restricted to `set_map_mode` (`compact` / `expanded`) and `set_map_extent` (0.1 to 400 km).
-The browser validates the full batch before applying any action and replaces the model's map-change text with confirmation of the actual resulting UI state.
+Actions are allowlisted: map mode/extent, grounded journey choices, verified route overlays, start guidance and clear guidance.
+Nested geometry, stop coordinates and journey payloads are bounded and validated server-side and client-side.
+The browser validates the full batch before applying any action and supplies confirmation of actual map/trip changes.
+Map-only replies use local state confirmation; substantive Gemini journey/vision answers are preserved alongside it.
 It rejects obsolete request IDs, canceled sessions, and superseded replies, and retains at most four conversational turns plus the previous verified bus ID.
 
 The assistant can answer about reported destination, distance, speed, delay, occupancy, and nearby buses.
 A destination headsign does not establish intermediate stop coverage.
-Route discovery, route highlighting, arrivals, stop guidance, and pedestrian navigation need authoritative data/tools and are still pending.
+Direct route discovery, route highlighting, available arrival predictions and approximate stop guidance use authoritative bus-service tools.
+Transfer planning and verified pedestrian navigation are not implemented.
+`context.dataMode` selects live or explicit demo data; destinationQuery and selectedJourneyId support bounded follow-up references.
+Without a Gemini key, a small deterministic command interpreter remains available and labels its replies local or scripted; it does not impersonate Gemini.
 
 ## Verify
 

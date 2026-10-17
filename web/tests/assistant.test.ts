@@ -125,3 +125,19 @@ test('wake transcript freezes gaze, reaches the transit request and applies one 
     (globalThis as any).window = originalWindow;
   }
 });
+
+test('spoken reply allows a bounded follow-up window and exits cleanly after silence', async () => {
+  const { startVoice } = await import('../src/voice/index.ts');
+  const previousWindow = (globalThis as any).window;
+  (globalThis as any).window = { setTimeout, clearTimeout };
+  const rec = { start() {}, stop() {}, onResult: null as ((t:string,f:boolean)=>void)|null, onError: null as ((m:string,f:boolean)=>void)|null };
+  const voice = startVoice({ recognizer:rec, speak:false, followUpMs:5, requestAnswer:async()=> 'Ready.', onStateChange(){}, onAnswer(){} });
+  try {
+    await voice.ask('What bus is that?');
+    assert.equal(voice.getState(),'listening');
+    await new Promise(resolve=>setTimeout(resolve,15));
+    assert.equal(voice.getState(),'idle');
+    voice.stop();
+    assert.equal(voice.getState(),'idle');
+  } finally { voice.stop(); (globalThis as any).window=previousWindow; }
+});

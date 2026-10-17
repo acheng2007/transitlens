@@ -48,3 +48,25 @@ python -m unittest discover -s tests -v
 ```
 
 Tests use mocked upstream responses for batches, normalization, missing fields, duplicate IDs, empty results, errors, timeout, stale cache, recovery, radius boundaries, FOV, and heading wraparound.
+
+## Route discovery and arrivals
+
+`GET /api/buses/network?demo=false` returns normalized ordered RTS patterns, shapes and stops.
+The catalog is cached for an hour, including partial snapshots, so unavailable patterns do not cause a request storm.
+A failed refresh retains stale patterns with an explicit status.
+A background warmup prepares the catalog when the server has an RTS key.
+
+`GET /api/buses/plan?destination=Shands&lat=29.6465&lon=-82.3478&demo=false` resolves actual stop names and checks boarding/alighting order on each pattern.
+Stops more than 0.7 km apart under the same search name require a specific stop choice.
+The initial direct planner limits boarding stops to 0.8 km straight-line distance.
+It does not compute walking routes or transfers, and a pattern is not a timetable guarantee.
+The first three options query matching stop/route/direction predictions through a 30-second cache.
+A missing prediction stays unknown; active vehicle count is separate from arrival time.
+
+Set `demo=true` explicitly to use the captured six-route fixture, synthetic vehicles and scripted arrival values.
+Demo does not use the RTS credential and is never a fallback for a live outage.
+The shared fixture contains public route geometry only, without credentials.
+All upstream calls share the instance request counter and daily cap, including patterns and predictions.
+Use a single service worker; multiple workers, restarts or other applications sharing a key require a coordinated persistent budget for strict account-wide enforcement.
+
+Provider reference: [BusTime v3 guide](https://riderts.app/bustime/apidoc/docs/DeveloperAPIGuide3_0.pdf).

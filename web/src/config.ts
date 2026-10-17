@@ -62,7 +62,7 @@ export type Settings = {
 
 export type DataMode = 'demo' | 'live';
 
-export type ViewMode = 'ar';
+export type ViewMode = 'ar' | 'handheld';
 
 export const DEFAULT_SETTINGS: Settings = {
   presetId: 'generic',

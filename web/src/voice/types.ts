@@ -9,6 +9,9 @@ export type StartVoiceOptions = {
   onCaptureStart?: () => void;
   onStateChange: (s: VoiceState) => void;
   /** What the user said (the question, after the wake phrase). */
+  onPartialTranscript?: (text: string) => void;
+  /** Continue listening briefly after a spoken reply, without another wake phrase. */
+  followUpMs?: number;
   onTranscript?: (text: string) => void;
   /** The spoken answer; the app shows it in the HUD. */
   onAnswer: (text: string) => void;

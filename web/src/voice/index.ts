@@ -25,6 +25,7 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
   let recognizer: Recognizer | null = null;
   let request: AbortController | null = null;
   let generation = 0;
+  let recognitionFailed = false;
 
   // Question capture. Chrome marks a phrase "final" at any short pause, so asking on the first
   // final result cut people off mid-sentence. Instead, after the wake phrase we collect every
@@ -63,6 +64,7 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
     } else {
       interim = phrase;
     }
+    opts.onPartialTranscript?.(currentQuestion());
     if (currentQuestion()) {
       // They've started talking: the "nothing said" timeout no longer applies.
       clearTimeout(questionTimer);
@@ -75,7 +77,7 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
     return [...committed, interim].join(' ').replace(/\s+/g, ' ').trim();
   }
 
-  function beginCapture() {
+  function beginCapture(timeoutMs = questionTimeoutMs) {
     opts.onCaptureStart?.();
     capturing = true;
     committed = [];
@@ -90,7 +92,7 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
         endCapture();
         if (state === 'listening') setState('idle');
       }
-    }, questionTimeoutMs);
+    }, timeoutMs);
     // Someone rambling (or background chatter): ask with what we have.
     maxTimer = window.setTimeout(finishCapture, maxQuestionMs);
   }
@@ -135,15 +137,16 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
       const spokenRemotely = ttsEndpoint ? await speakRemote(answer, ttsEndpoint) : false;
       if (!spokenRemotely && !stopped) await speak(answer, lang);
       if (stopped || current !== generation) return;
-      recognizer?.start();
+      if (!recognitionFailed) recognizer?.start();
     }
     setState('idle');
+    if (opts.followUpMs && recognizer && !recognitionFailed && !stopped) beginCapture(opts.followUpMs);
   }
 
   async function fetchAnswer(question: string): Promise<string> {
     const ctrl = new AbortController();
     request = ctrl;
-    const t = window.setTimeout(() => ctrl.abort(), 20000);
+    const t = window.setTimeout(() => ctrl.abort(), 35000);
     try {
       if (opts.requestAnswer) return await opts.requestAnswer(question, ctrl.signal);
       throw new Error('Transit conversation adapter is unavailable');
@@ -173,7 +176,7 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
     recognizer.onResult = onResult;
     recognizer.onError = (message, fatal) => {
       opts.onError?.(message);
-      if (fatal) setState('idle');
+      if (fatal) { recognitionFailed = true; endCapture(); setState('idle'); }
     };
     recognizer.start();
   }
@@ -190,6 +193,7 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
     },
     ask,
     listen() {
+      if (recognitionFailed || !recognizer) { opts.onError?.('Use Ask to type a question; microphone recognition is unavailable'); return; }
       if (!stopped && state === 'idle') beginCapture();
     },
     getState: () => state,

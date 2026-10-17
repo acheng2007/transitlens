@@ -39,6 +39,7 @@ def normalize(rows):
         delay = delay if isinstance(delay, bool) else {'true': True, 'false': False}.get(str(delay).lower())
         load = text(row.get('psgld'))
         buses[vid] = dict(id=vid, route=route, destination=text(row.get('des')), lat=lat, lon=lon,
+                          patternId=text(row.get('pid')),
                           headingDeg=heading % 360 if heading is not None and heading >= 0 else None,
                           speedMph=speed if speed is not None and speed >= 0 else None,
                           delayed=delay, passengerLoad=load if load in ('FULL', 'HALF_EMPTY', 'EMPTY') else None)
@@ -60,10 +61,18 @@ class RTS:
         self.fetched_at = None
         self.failed = False
         self.lock = asyncio.Lock()
+        self.request_day = ''
+        self.request_count = 0
 
     async def request(self, method, field, **params):
         if not self.key:
             raise ValueError('RTS not configured')
+        day = datetime.now(timezone.utc).date().isoformat()
+        if day != self.request_day:
+            self.request_day, self.request_count = day, 0
+        if self.request_count >= self.daily_limit:
+            raise ValueError('RTS daily request budget exhausted')
+        self.request_count += 1
         response = await self.client.get(f'{self.base}/{method}', params={'key': self.key, 'format': 'json', **params}, timeout=8)
         response.raise_for_status()
         body = response.json()['bustime-response']
@@ -89,7 +98,7 @@ class RTS:
             # Keep the configured cache interval, increasing it only when needed
             # to stay within the provider's daily request allowance. Reserve
             # route-catalog calls (including small configured route TTLs).
-            catalog_budget = math.ceil(86400 / self.routes_ttl)
+            catalog_budget = math.ceil(86400 / self.routes_ttl) * (1 + len(self.routes)) + 500
             batch_count = math.ceil(len(self.routes) / 10)
             interval = max(self.vehicles_ttl, batch_count * 86400 / max(1, self.daily_limit - catalog_budget))
             if now - self.attempt_at >= interval:

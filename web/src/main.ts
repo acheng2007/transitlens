@@ -1,3 +1,7 @@
+import { startDemoFeed } from './demo';
+import { createJourneyState, reduceJourney, arrivalLabel } from './journey-state';
+import { haversineKm } from './geo';
+import type { TransitAction } from '../../shared/assistant';
 import { createStreetMap } from './street-map';
 import { createMapState, applyMapAction, compassBuses, compassLimitKm } from './map-state';
 import type { MapAction } from './map-state';
@@ -59,6 +63,8 @@ let devHeading = 0;
 
 let streetMap: ReturnType<typeof createStreetMap> | null = null;
 let mapState = createMapState(5);
+let journeyState = createJourneyState();
+let assistantSource = 'Ready';
 function dispatchMap(action: MapAction) { mapState = applyMapAction(mapState, action); renderOverlay(); }
 
 let busFocus = createBusFocus();
@@ -71,15 +77,74 @@ let voice: VoiceHandle | null = null;
 let voiceHud: VoiceHud = { state: 'idle', transcript: null, answer: null, error: null };
 let answerTimer = 0;
 const conversation = createTransitConversation(() => ({
+  dataMode: settings.dataMode === 'demo' ? 'demo' : 'live',
+  destinationQuery: journeyState.plan?.query ?? null,
+  selectedJourneyId: journeyState.selectedJourneyId,
   focusedBusId, position: feed?.get().position ?? null, radiusKm: settings.radiusKm ?? 5,
   map: { mode: mapState.mode, extentKm: mapState.extentKm },
-}), (actions) => {
-  actions.forEach(dispatchMap);
-  const messages: string[] = [];
-  if (actions.some(a => a.type === 'set_map_mode')) messages.push(mapState.mode === 'expanded' ? 'Map expanded.' : 'Map returned to compact view.');
-  if (actions.some(a => a.type === 'set_map_extent')) messages.push(`Map range set to ${Number(mapState.extentKm.toFixed(2))} kilometers.`);
-  return messages.join(' ');
+}), applyAssistantActions, reply => {
+  assistantSource = `${reply.demo ? 'DEMO DATA · ' : ''}${reply.source === 'gemini' ? 'Gemini API' : reply.source === 'scripted' ? 'Scripted commands' : 'Local tools · Gemini offline'}`;
+  renderJourneyOptions();
+  renderOverlay();
 });
+
+function applyAssistantActions(actions: TransitAction[]): string {
+  const confirmations: string[] = [];
+  for (const action of actions) {
+    if (action.type === 'set_map_mode' || action.type === 'set_map_extent') {
+      dispatchMap(action);
+      confirmations.push(action.type === 'set_map_mode' ? (mapState.mode === 'expanded' ? 'Map expanded.' : 'Map returned to compact view.') : `Map range set to ${Number(mapState.extentKm.toFixed(2))} kilometers.`);
+      continue;
+    }
+    journeyState = reduceJourney(journeyState, action);
+    if (action.type === 'clear_guidance') { dispatchMap({ type: 'set_map_mode', mode: 'compact' }); confirmations.push('Guidance canceled. Back to exploring.'); }
+    else {
+      dispatchMap({ type: 'set_map_mode', mode: 'expanded' });
+      const center = feed?.get().position;
+      if (center) {
+        const points = journeyState.routes.flatMap(r => r.shape);
+        const extent = points.reduce((max,p) => Math.max(max,haversineKm(center.lat,center.lon,p.lat,p.lon)),0.3);
+        dispatchMap({ type: 'set_map_extent', extentKm: Math.min(400,extent*1.2) });
+      }
+      if (action.type === 'show_journeys' && !actions.some(a => a.type === 'start_guidance')) {
+        const plan = action.plan;
+        if (plan.status === 'ambiguous') confirmations.push(`I found several places. Which stop do you mean: ${plan.destinations.slice(0,3).map(s => s.name).join(', ')}?`);
+        else if (plan.options.length) confirmations.push(`I found ${plan.options.length} direct ${plan.options.length === 1 ? 'option' : 'options'} to ${plan.query}. Route ${plan.options[0].routeId} boards at ${plan.options[0].boardingStop.name}. Say take the first option, or choose a route.`);
+        else confirmations.push(plan.status === 'unavailable' ? 'Route data is unavailable.' : `No direct trip to ${plan.query} was found with a boarding stop within half a mile. Try another destination or stop.`);
+        if (plan.networkStatus !== 'available') confirmations.push(`Route catalog is ${plan.networkStatus}; results may be incomplete or outdated.`);
+      }
+      if (action.type === 'show_routes') confirmations.push(`Highlighted route ${action.routes[0].routeId} and its stops.`);
+      if (action.type === 'start_guidance') {
+        const j = action.journey;
+        confirmations.push(`Take route ${j.routeId} ${j.direction.toLowerCase()} from ${j.boardingStop.name} to ${j.alightingStop.name}. ${arrivalLabel(j)}. Follow the stop bearing; this is approximate direction, not walking directions.`);
+      }
+    }
+  }
+  renderJourneyOptions();
+  return confirmations.join(' ');
+}
+
+function renderJourneyOptions() {
+  const host = document.getElementById('journey-options')!;
+  host.replaceChildren();
+  document.getElementById('assistant-source')!.textContent = assistantSource;
+  const plan = journeyState.plan;
+  for (const [i, option] of (plan?.options ?? []).entries()) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'journey-option';
+    button.style.setProperty('--route-color', option.color);
+    const title = document.createElement('strong'); title.textContent = `${i+1} · ROUTE ${option.routeId} · ${option.direction}`;
+    const detail = document.createElement('span'); detail.textContent = `${option.boardingStop.name} → ${option.alightingStop.name}`;
+    const meta = document.createElement('small'); meta.textContent = `${Math.round(option.walkKm*1000)} m straight-line to stop · ${option.rideStops} stops · ${arrivalLabel(option)}`;
+    button.append(title,detail,meta);
+    button.addEventListener('click', () => { journeyState = { ...journeyState, selectedJourneyId: option.id }; void voice?.ask('Guide me to the selected boarding stop'); });
+    host.append(button);
+  }
+  if (plan?.status === 'ambiguous') for (const stop of plan.destinations) {
+    const button = document.createElement('button'); button.type='button'; button.textContent=stop.name;
+    button.addEventListener('click', () => { void voice?.ask(`Show routes to ${stop.id}`); }); host.append(button);
+  }
+}
 
 /** Latest computed half-FOV, for the calibration toast and debug line. */
 let lastHalfFovDeg = 0;
@@ -111,7 +176,7 @@ async function initStartScreen() {
   };
   presetSelect.value = settings.presetId;
   ipdInput.value = String(settings.ipdMm);
-  dataSelect.value = 'live';
+  dataSelect.value = params.get('demo') === '1' ? 'demo' : settings.dataMode === 'demo' ? 'demo' : 'live';
   viewSelect.value = settings.viewMode;
   radiusInput.value = settings.radiusKm == null ? '' : String(settings.radiusKm);
   compassInput.value = String(settings.compassDistanceMiles ?? 1);
@@ -121,6 +186,7 @@ async function initStartScreen() {
   voiceCheck.checked = settings.voiceEnabled;
   await refreshCameraList();
 
+  void fetch('/api/voice/health').then(r => r.json()).then(data => { document.getElementById('connection-status')!.textContent = data.hasKey ? 'Gemini key configured' : 'Add Gemini key · demo ready'; }).catch(() => { document.getElementById('connection-status')!.textContent = 'Start voice service · port 8002'; });
   if (DEV) startStatus.textContent = 'Dev mode: ← → turn (hold Shift for 10°).';
   else if (!window.isSecureContext) {
     startStatus.textContent = 'Not a secure context: camera and sensors need HTTPS (use ngrok) or localhost.';
@@ -149,8 +215,8 @@ function readSettingsFromForm() {
     presetId: presetSelect.value,
     ipdMm: Number.isFinite(ipd) && ipd > 0 ? Math.min(80, Math.max(50, ipd)) : DEFAULT_IPD_MM,
     cameraId: cameraSelect.value,
-    dataMode: 'live',
-    viewMode: 'ar',
+    dataMode: dataSelect.value === 'demo' ? 'demo' : 'live',
+    viewMode: viewSelect.value === 'handheld' ? 'handheld' : 'ar',
     voiceEnabled: voiceCheck.checked,
     radiusKm: parseRadius(radiusInput.value),
     compassDistanceMiles: compassAll.checked ? null : (Number(compassInput.value) > 0 && Number.isFinite(Number(compassInput.value)) ? Number(compassInput.value) : 1),
@@ -221,11 +287,11 @@ function frame() {
   const selectedFocusId = busFocus.update(buses, headingDeg, timeMs);
   focusedBusId = selectedFocusId;
   mapState = { ...mapState, center: feedState?.position ?? null, responseCenter: feedState?.responseCenter ?? null, headingDeg };
-  streetMap?.update({ state: mapState, buses: allBuses, focusId: selectedFocusId, halfFov: lastHalfFovDeg });
+  streetMap?.update({ state: mapState, buses: allBuses, focusId: selectedFocusId, halfFov: lastHalfFovDeg, journey: journeyState });
   const hud = {
     headingDeg, halfTan, buses: buses,
     status: [feedState?.status ?? '', orientationMessage, orientation?.get()?.northReference === 'magnetic' ? 'Magnetic heading - true-north correction pending' : '', !DEV && headingDeg == null ? 'Compass unavailable - check motion permission' : ''].filter(Boolean).join(' · '),
-    timeMs, voice: voiceHud,
+    timeMs, voice: voiceHud, journey: journeyState, position: feedState?.position ?? null, assistantSource, demo: settings.dataMode === 'demo', handheld: settings.viewMode === 'handheld',
     selectedFocusId, mapFrame: streetMap?.get(), expandedMap: mapState.mode === 'expanded',
   };
   // Selection is already resolved. Every renderer receives the same state.
@@ -292,9 +358,10 @@ function renderOverlay() {
   const resume =
     !DEV && !document.fullscreenElement ? '<div class="hud-hint">Rotate to landscape · long-press for settings</div>' : '';
   const toastHtml = toast ? `<div class="toast">${toast}</div>` : '';
-  const controls = `<div class="map-controls"><button data-assistant>Ask Gemini</button><button data-map="toggle">${mapState.mode === 'expanded' ? 'Close' : 'Map'}</button><button data-map="in" aria-label="Zoom map in">+</button><button data-map="out" aria-label="Zoom map out">−</button></div>`;
+  const controls = `<div class="map-controls"><button data-listen class="voice-trigger" data-state="${voiceHud.state}"><span class="voice-dot"></span>${voiceHud.state === 'idle' ? 'Hey Gemini' : voiceHud.state}</button><button data-assistant>Ask</button><button data-map="toggle">${mapState.mode === 'expanded' ? 'Close' : 'Map'}</button><button data-map="in" aria-label="Zoom map in">+</button><button data-map="out" aria-label="Zoom map out">−</button></div>`;
   const credits = '<div class="map-credits" data-map-credit><a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>';
-  const html = `${credits}${mapState.mode === 'compact' ? '<div class="crosshair"></div>' : ''}${controls}${error}${resume}${toastHtml}${debug}`;
+  const badge = `<div class="session-badge">${settings.dataMode === 'demo' ? (CAMERA_OFF ? 'DEMO · SYNTHETIC VEHICLES · NO CAMERA' : 'DEMO · SYNTHETIC VEHICLES') : 'LIVE RTS'} <span>TRANSITLENS</span></div>`;
+  const html = `${badge}${credits}${mapState.mode === 'compact' ? '<div class="crosshair"></div>' : ''}${controls}${error}${resume}${toastHtml}${debug}`;
   for (const eye of view.eyes) eye.overlay.innerHTML = html;
 }
 
@@ -304,15 +371,31 @@ async function start() {
   readSettingsFromForm();
   conversation.reset();
   focusedBusId = null;
+  journeyState = createJourneyState();
+  assistantSource = settings.dataMode === 'demo' ? 'DEMO DATA · awaiting command' : 'Ready · Gemini';
+  renderJourneyOptions();
   voiceHud = { state: 'idle', transcript: null, answer: null, error: null, wakeEnabled: settings.voiceEnabled };
   assistantAnswer.textContent = '';
   // Initialize recognition and audio inside the Start gesture, before camera awaits.
   voice = startVoice({
     listenForWake: settings.voiceEnabled,
+    followUpMs: settings.voiceEnabled ? 7000 : 0,
+    onPartialTranscript: text => { voiceHud.transcript = text; },
     onCaptureStart: () => conversation.capture(),
-    requestAnswer: (question, signal) => conversation.ask(question, signal),
+    requestAnswer: (question, signal) => {
+      if (/read.*(?:sign|display)|scan.*bus|what.*(?:can you see|do you see)/i.test(question)) {
+        const video = view?.eyes[0].video;
+        if (!video?.videoWidth || !video.videoHeight) return Promise.resolve('The camera is not ready. Point the phone at the bus sign and try again.');
+        const canvas = document.createElement('canvas');
+        const scale = 640 / Math.max(video.videoWidth, video.videoHeight);
+        canvas.width = Math.round(video.videoWidth * scale); canvas.height = Math.round(video.videoHeight * scale);
+        canvas.getContext('2d')!.drawImage(video,0,0,canvas.width,canvas.height);
+        return conversation.ask(question, signal, { mimeType: 'image/jpeg', data: canvas.toDataURL('image/jpeg',0.65).split(',')[1] });
+      }
+      return conversation.ask(question, signal);
+    },
     ttsEndpoint: null,
-    onStateChange: state => { voiceHud.state = state; },
+    onStateChange: state => { voiceHud.state = state; renderOverlay(); },
     onTranscript: text => {
       clearTimeout(answerTimer);
       voiceHud = { ...voiceHud, transcript: text, answer: null, error: null };
@@ -335,7 +418,7 @@ async function start() {
 
   try {
     hudError = '';
-    if (CAMERA_OFF) { stream = null; hudError = 'Camera disabled - desktop blank background'; }
+    if (CAMERA_OFF) { stream = null; hudError = settings.dataMode === 'demo' ? '' : 'Camera disabled - desktop blank background'; }
     else {
       try { stream = await startCamera(settings.cameraId || undefined); }
       catch { stream = null; hudError = 'Camera unavailable - blank background'; }
@@ -348,21 +431,23 @@ async function start() {
 
     if (!DEV) orientation = startOrientation(FORCE_ORIENT_EVENTS, () => feed?.get().declinationDeg ?? null);
     busFocus = createBusFocus();
-    if (!DEV) gps = watchPosition();
-    feed = startBusFeed({
+    if (!DEV && settings.dataMode !== 'demo') gps = watchPosition();
+    feed = settings.dataMode === 'demo' ? startDemoFeed() : startBusFeed({
       getPosition: () => DEV ? REITZ_CENTER : gps?.get() ?? null,
       positionStatus: () => DEV ? 'DESKTOP · fixed Reitz Union position' : gps?.status() ?? 'Waiting for GPS',
       radiusKm: settings.radiusKm ?? 5,
     });
     mapState = createMapState(settings.radiusKm ?? 5);
     streetMap = createStreetMap();
-    view = createStereoView(stereoEl, stream);
+    view = createStereoView(stereoEl, stream, settings.viewMode === 'handheld');
+    if (DEV && settings.dataMode === 'demo') devHeading = feed.get().buses[0]?.bearingDeg ?? 0;
     mode = null;
     longPressFired = false;
     // Swallow the Android back gesture while in the view (see popstate handler).
     history.pushState({ arView: true }, '');
     startScreen.hidden = true;
     stereoEl.hidden = false;
+    stereoEl.classList.toggle('demo-stage', CAMERA_OFF && settings.dataMode === 'demo');
     startStatus.textContent = '';
     relayout();
     void keepScreenOn();
@@ -523,7 +608,8 @@ function armAutoLock() {
 }
 
 function onViewTap(e: MouseEvent) {
-  if ((e.target as Element).closest('[data-assistant]')) {
+  if ((e.target as Element).closest('[data-listen]') && settings.voiceEnabled) { voice?.listen(); return; }
+  if ((e.target as Element).closest('[data-assistant], [data-listen]')) {
     conversation.capture();
     assistantPanel.showModal();
     questionInput.focus();
@@ -578,7 +664,7 @@ startBtn.addEventListener('click', start);
 stereoEl.addEventListener('click', onViewTap);
 // Long-press anywhere = back to the start screen (the deliberate way out).
 stereoEl.addEventListener('pointerdown', (e) => {
-  if ((e.target as Element).closest('[data-map], [data-map-credit], [data-assistant]')) return;
+  if ((e.target as Element).closest('[data-map], [data-map-credit], [data-assistant], [data-listen]')) return;
   clearTimeout(longPressTimer);
   longPressTimer = window.setTimeout(() => {
     longPressFired = true;
@@ -590,6 +676,7 @@ for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
 }
 window.addEventListener('keydown', (e) => {
   if (assistantPanel.open) return;
+  if (view && e.code === 'Space') { e.preventDefault(); voice?.listen(); return; }
   if (view && ['m', 'M', '+', '=', '-', 'Escape'].includes(e.key)) {
     e.preventDefault();
     if (e.key === 'Escape') { if (mapState.mode === 'expanded') dispatchMap({ type: 'set_map_mode', mode: 'compact' }); else stop(); }
@@ -636,3 +723,5 @@ assistantPanel.addEventListener('click', e => {
   const prompt = (e.target as Element).closest<HTMLButtonElement>('[data-question]')?.dataset.question;
   if (prompt && voice) void voice.ask(prompt);
 });
+
+document.getElementById('demo-btn')!.addEventListener('click', () => { dataSelect.value = 'demo'; void start(); });

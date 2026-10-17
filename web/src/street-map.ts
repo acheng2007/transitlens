@@ -4,11 +4,13 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { mapPoint, mapZoom } from './map-state';
 import type { MapState } from './map-state';
 import type { Bus } from './buses';
+import type { JourneyState } from './journey-state';
+import type { GeoPoint } from '../../shared/journey';
 
 setWorkerUrl(workerUrl);
 setWorkerCount(1);
 export type MapFrame = { canvas: HTMLCanvasElement; status: string; extentKm: number; northUp: boolean; mode: MapState['mode']; located: boolean };
-type Input = { state: MapState; buses: Bus[]; focusId: string | null; halfFov: number };
+type Input = { state: MapState; buses: Bus[]; focusId: string | null; halfFov: number; journey?: JourneyState };
 const SIZE = 512;
 /** One asynchronous renderer and shared composite frame shared by every output. */
 export function createStreetMap() {
@@ -39,6 +41,36 @@ export function createStreetMap() {
       ctx.strokeStyle = '#284351'; ctx.lineWidth = 1;
       for (const r of [64, 128, 192, 255]) { ctx.beginPath(); ctx.arc(256, 256, r, 0, Math.PI * 2); ctx.stroke(); }
     }
+    const project = (p: GeoPoint): [number, number] => {
+      const point = roads && map ? map.project([p.lon, p.lat]) : null;
+      return point ? [point.x, point.y] : mapPoint(p, state, SIZE);
+    };
+    // Paths are authoritative RTS shapes. No LLM coordinates enter the renderer.
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, SIZE, SIZE); ctx.clip();
+    for (const route of input.journey?.routes ?? []) {
+      ctx.strokeStyle = route.color; ctx.lineWidth = state.mode === 'expanded' ? 5 : 8;
+      ctx.shadowColor = route.color; ctx.shadowBlur = 10; ctx.beginPath();
+      route.shape.forEach((p, i) => { const [x,y] = project(p); if (i) ctx.lineTo(x,y); else ctx.moveTo(x,y); });
+      ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#bbfff1'; ctx.lineWidth = 1.5; ctx.stroke();
+      for (const stop of route.stops) {
+        const [x,y] = project(stop); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+      }
+    }
+    const trip = input.journey?.guidance;
+    if (trip) {
+      for (const [stop, color, name] of [[trip.boardingStop, '#b5ff67', 'BOARD'], [trip.alightingStop, '#ffc94d', 'DESTINATION']] as const) {
+        const [x,y] = project(stop);
+        ctx.fillStyle = color; ctx.strokeStyle = '#08121c'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'center'; ctx.fillText(name,x,y-18);
+      }
+      // Dashed line is explicitly a bearing cue, never a pedestrian route.
+      const [x,y] = project(trip.boardingStop);
+      ctx.setLineDash([7,7]); ctx.strokeStyle='#b5ff6788'; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(256,256); ctx.lineTo(x,y); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.restore();
     if (state.center) {
       if (state.headingDeg !== null) {
         ctx.fillStyle = '#4fc3f733'; ctx.beginPath(); ctx.moveTo(256, 256);
@@ -49,11 +81,14 @@ export function createStreetMap() {
         const point = roads && map ? map.project([b.lon, b.lat]) : null;
         const [x, y] = point ? [point.x, point.y] : mapPoint(b, state, SIZE);
         if (x < 0 || y < 0 || x > SIZE || y > SIZE) continue;
-        ctx.fillStyle = b.id === focusId ? '#ffc94d' : '#67dcff';
+        const relevant = !input.journey?.routes.length || input.journey.routes.some(r => r.routeId === b.route);
+        ctx.globalAlpha = relevant || b.id === focusId ? 1 : 0.35;
+        ctx.fillStyle = b.id === focusId ? '#ffc94d' : input.journey?.routes.some(r => r.routeId === b.route) ? '#b5ff67' : '#67dcff';
         ctx.strokeStyle = '#08121c'; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(x, y, b.id === focusId ? 14 : state.mode === 'compact' ? 10 : 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.font = `bold ${state.mode === 'compact' ? 32 : 24}px system-ui`; ctx.textAlign = 'center'; ctx.fillText(b.route, x, y - (state.mode === 'compact' ? 18 : 14));
+        ctx.font = `bold ${state.mode === 'compact' ? 32 : 24}px system-ui`; ctx.textAlign = 'center'; if (relevant || state.mode === 'compact' || b.id === focusId) ctx.fillText(b.route, x, y - (state.mode === 'compact' ? 18 : 14));
       }
+      ctx.globalAlpha = 1;
       ctx.fillStyle = '#fff'; ctx.strokeStyle = '#159cd0'; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.arc(256, 256, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }

@@ -1,75 +1,47 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-    <meta name="theme-color" content="#000000" />
-    <title>TransitLens</title>
-    <link rel="stylesheet" href="/src/style.css" />
-  </head>
-  <body>
-    <div id="start-screen">
-      <h1>TransitLens</h1>
-      <label>
-        Phone
-        <select id="preset-select"></select>
-      </label>
-      <label>
-        Lens spacing (mm)
-        <input id="ipd-input" type="number" min="50" max="80" step="1" />
-      </label>
-      <label>
-        Camera
-        <select id="camera-select"></select>
-      </label>
-      <label>
-        View
-        <select id="view-select">
-          <option value="ar">Google Cardboard</option>
-        </select>
-      </label>
-      <label>
-        Data
-        <select id="data-select">
-          <option value="live">Live RTS</option>
-        </select>
-      </label>
-      <label>
-        Search radius (km)
-        <input id="radius-input" type="number" min="1" max="400" step="1" inputmode="numeric" placeholder="5 km" />
-      </label>
-      <label>Compass distance (miles)<input id="compass-distance" type="number" min="0.01" step="any" value="1" inputmode="decimal" /></label>
-      <label class="checkbox"><input id="compass-all" type="checkbox" />All nearby</label>
-      <p class="hint">Compass distance filters individual buses and does not fetch beyond the search radius.<br>Map: M to open/close, + / − to zoom. Escape closes the map first.</p>
-      <label class="checkbox">
-        <input id="cast-check" type="checkbox" />
-        Cast to laptop (open /cast.html there)
-      </label>
-      <label class="checkbox"><input id="voice-check" type="checkbox" checked />Hey Gemini voice assistant</label>
-      <p class="hint">Look at a bus route marker, hold your gaze, then say “Hey Gemini, where is this bus going?”<br>Ask about delays, occupancy or nearby buses, or say “expand the map” and “zoom in.”<br>Ask Gemini also accepts typed questions. Bus identity comes from live RTS and your heading.</p>
-      <button id="start-btn">Start</button>
-      <p class="hint">Rotate the phone to landscape. All iPhones need size and FOV calibration.<br>In view: double-tap middle = calibrate (then middle = next setting, left/right = adjust) · long-press = back to this screen</p>
-      <p id="start-status"></p>
-    </div>
-    <div id="stereo" hidden></div>
-    <dialog id="assistant-panel" aria-labelledby="assistant-title">
-      <button id="assistant-close" type="button" aria-label="Close Gemini">Close</button>
-      <h2 id="assistant-title">Ask Gemini</h2>
-      <p>Ask about your selected bus or control the map.</p>
-      <div class="assistant-prompts">
-        <button type="button" data-question="Where is this bus going?">Where is it going?</button>
-        <button type="button" data-question="Is this bus delayed or full?">Delay &amp; occupancy</button>
-        <button type="button" data-question="What buses are nearby?">Nearby buses</button>
-        <button type="button" data-question="Expand the map">Expand map</button>
-      </div>
-      <form id="assistant-form">
-        <label for="assistant-question">Your question</label>
-        <input id="assistant-question" name="question" maxlength="1000" placeholder="Does this bus go to Shands?" required autocomplete="off" />
-        <button type="submit">Ask</button>
-      </form>
-      <p id="assistant-answer" role="status" aria-live="polite"></p>
-      <small>Destination displays do not confirm every stop. Verified arrivals and walking directions are not available yet.</small>
-    </dialog>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#071014" />
+  <title>TransitLens · Look. Ask. Go.</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="start-screen">
+    <header class="brand-bar"><a class="brand" href="/">T<span>TransitLens</span></a><span class="location-tag">GAINESVILLE / RTS</span></header>
+    <main class="launch-shell">
+      <section class="hero">
+        <div class="hero-copy"><p class="eyebrow">YOUR CITY, UNDERSTOOD.</p><h1>Look.<br>Ask.<br><em>Go.</em></h1><p class="hero-description">Point at a bus. Ask where it goes.<br>Let Gemini turn the street into your transit map.</p><div class="capability-tags"><span>Spatial AR</span><span>Voice copilot</span><span>Live transit</span></div></div>
+        <div class="hero-scene" aria-hidden="true"><div class="scene-grid"></div><div class="scene-orbit orbit-one"></div><div class="scene-orbit orbit-two"></div><div class="scene-origin"></div><div class="scene-bus"><span>RTS</span><strong>38</strong><small>LOOK TO SELECT</small></div><div class="scene-voice"><span class="voice-dot"></span>Hey Gemini, get me to Shands.</div><span class="scene-coordinate">29.6465° N &nbsp; 82.3478° W</span></div>
+      </section>
+      <section class="setup-panel">
+        <div class="panel-heading"><div><p class="eyebrow">ENTER TRANSITLENS</p><h2>Choose your view.</h2></div><span id="connection-status" class="connection-status">Checking Gemini…</span></div>
+        <div class="setup-grid">
+          <label>Experience<select id="view-select"><option value="ar">Google Cardboard · immersive</option><option value="handheld">Handheld · full screen</option></select></label>
+          <label>Transit data<select id="data-select"><option value="live">Live Gainesville RTS</option><option value="demo">Showcase demo · synthetic buses</option></select></label>
+          <label>Search radius (km)<input id="radius-input" type="number" min="1" max="400" step="1" inputmode="numeric" placeholder="5 km" /></label>
+          <label>Compass distance (miles)<input id="compass-distance" type="number" min="0.01" step="any" value="1" inputmode="decimal" /></label>
+        </div>
+        <div class="setup-toggles"><label class="checkbox"><input id="compass-all" type="checkbox" />All nearby on compass</label><label class="checkbox"><input id="voice-check" type="checkbox" checked />Hey Gemini + spoken replies</label><label class="checkbox"><input id="cast-check" type="checkbox" />Cast to laptop</label></div>
+        <details class="calibration-settings"><summary>Camera &amp; Cardboard calibration</summary><div class="setup-grid"><label>Phone<select id="preset-select"></select></label><label>Lens spacing (mm)<input id="ipd-input" type="number" min="50" max="80" step="1" /></label><label>Camera<select id="camera-select"></select></label></div></details>
+        <div class="launch-actions"><button id="start-btn">Enter TransitLens <span>↗</span></button><button id="demo-btn" type="button">Explore the demo</button></div>
+        <p id="start-status" role="status"></p>
+      </section>
+      <section class="voice-playbook"><p class="eyebrow">ONE CONVERSATION. THE WHOLE TRIP.</p><div><span>01 / IDENTIFY</span><p>“Hey Gemini, where is this bus going?”</p></div><div><span>02 / DISCOVER</span><p>“Show me routes to Shands.”</p></div><div><span>03 / GET READY</span><p>“Take the first option. Where do I board?”</p></div><small>Use voice, tap the microphone, or type a question. After a reply, ask a follow-up without repeating the wake phrase.</small></section>
+      <p class="launch-footnote">For Cardboard, rotate to landscape and calibrate your phone. Double-tap the middle to calibrate; long-press to return here. Handheld keeps the same transit and voice state. Desktop: arrow keys turn, Space listens, M opens the map. Casting viewer: /cast.html.</p>
+    </main>
+  </div>
+  <div id="stereo" hidden></div>
+  <dialog id="assistant-panel" aria-labelledby="assistant-title">
+    <button id="assistant-close" type="button" aria-label="Close Gemini">Close</button>
+    <p class="eyebrow">YOUR TRANSIT COPILOT</p><h2 id="assistant-title">Ask Gemini</h2><p id="assistant-source" class="connection-status">Ready</p>
+    <div class="assistant-prompts"><button type="button" data-question="Where is this bus going?">Identify this bus</button><button type="button" data-question="Show routes to Shands">Routes to Shands</button><button type="button" data-question="Highlight route 38">Highlight 38</button><button type="button" data-question="Read the bus sign">Read bus sign</button><button type="button" data-question="Cancel guidance">Cancel trip</button></div>
+    <form id="assistant-form"><label for="assistant-question">What would you like to do?</label><input id="assistant-question" name="question" maxlength="1000" placeholder="Get me to Shands" required autocomplete="off" /><button type="submit">Ask ↗</button></form>
+    <p id="assistant-answer" role="status" aria-live="polite"></p>
+    <div id="journey-options"></div>
+    <small>Direct routes use ordered RTS stop patterns. Stop guidance is approximate bearing and distance, not a verified walking path. Demo vehicles and demo arrival times are synthetic. “Read bus sign” sends one camera still to Gemini; ordinary questions use transit data only.</small>
+  </dialog>
+  <script type="module" src="/src/main.ts"></script>
+</body>
 </html>
