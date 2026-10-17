@@ -19,5 +19,8 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
+
+# Tunnel URL written by `npm run phone`
+web/.phone-url
 .specstory/
 .playwright-mcp/

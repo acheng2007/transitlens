@@ -23,7 +23,9 @@ export const PRESETS: DevicePreset[] = [
   { id: 'pixel10', label: 'Pixel 10', screenWidthMm: 146, cameraHalfTan1x: 0.7, match: /Pixel 10/i },
   { id: 's22plus', label: 'Galaxy S22+', screenWidthMm: 152, cameraHalfTan1x: 0.73, match: /SM-S906/i },
   { id: 'iphone13mini', label: 'iPhone 13 mini', screenWidthMm: 125, cameraHalfTan1x: 0.72 },
-  { id: 'generic', label: 'Other / iPhone (calibrate size + FOV)', screenWidthMm: 146, cameraHalfTan1x: 0.7 },
+  // Recent 6.1" iPhones (~147 mm long edge); main camera 26 mm equivalent -> tan(half 4:3 width) ~0.67.
+  { id: 'iphone', label: 'iPhone', screenWidthMm: 147, cameraHalfTan1x: 0.67, match: /iPhone/ },
+  { id: 'generic', label: 'Other phone (calibrate size + FOV)', screenWidthMm: 146, cameraHalfTan1x: 0.7 },
 ];
 
 /** Typical Cardboard lens center-to-center distance. */
@@ -62,7 +64,10 @@ export type Settings = {
 
 export type DataMode = 'demo' | 'live';
 
-export type ViewMode = 'ar';
+/**
+ * 'ar' = Cardboard camera passthrough (two eyes); 'mobile' = one full-screen camera view held in the hand;
+ */
+export type ViewMode = 'ar' | 'mobile';
 
 export const DEFAULT_SETTINGS: Settings = {
   presetId: 'generic',
@@ -80,7 +85,7 @@ export const DEFAULT_SETTINGS: Settings = {
   castEnabled: false,
 };
 
-export const TRANSIT_SETTINGS: Settings = { ...DEFAULT_SETTINGS, dataMode: 'live', viewMode: 'ar', voiceEnabled: false, radiusKm: 5, compassDistanceMiles: 1 };
+export const TRANSIT_SETTINGS: Settings = { ...DEFAULT_SETTINGS, dataMode: 'live', viewMode: 'mobile', voiceEnabled: false, radiusKm: 5, compassDistanceMiles: 1 };
 
 const STORAGE_KEY = 'transitlens-settings-v1';
 

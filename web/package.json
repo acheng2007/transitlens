@@ -7,15 +7,18 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "phone": "node scripts/phone.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
+    "@types/qrcode": "^1.5.5",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.1"
   },
   "dependencies": {
-    "maplibre-gl": "^6.14.0"
+    "maplibre-gl": "^6.14.0",
+    "qrcode": "^1.5.4"
   }
 }
