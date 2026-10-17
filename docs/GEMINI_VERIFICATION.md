@@ -73,3 +73,15 @@ Real microphone recognition and audible playback on phones, physical Cardboard f
 Browser speech recognition may use a network speech service and does not become offline just because the transit fixture is local.
 Turn-by-turn pedestrian paths, transfer planning and a comprehensive timetable-based journey planner are not implemented.
 The current planner checks direct ordered patterns and straight-line boarding distance, then exposes available matching RTS predictions separately.
+
+## Integration with latest main
+
+The direct-to-main integration preserves the newer `/api/transit` catalog, stop queries, direct-service endpoints and focused-bus route overlay alongside the Gemini copilot.
+The focused route appears while no copilot route or trip is selected; selected trip geometry takes priority so a full focused route cannot obscure boarding guidance.
+Showcase focus uses captured fixture geometry through the validated pattern cache and makes no live pattern requests.
+Both catalog reservations and prediction headroom count against the shared vehicle polling allowance, and actual upstream requests share the hard daily cap.
+The earlier phone overlay check remains recorded in [transit verification](TRANSIT_ROUTES_VERIFICATION.md); it does not verify the newly combined copilot interface on hardware.
+
+The merged tree passes 27 web tests, 36 bus-service tests and 16 voice-service tests.
+Web production and Android shared-module compatibility builds pass.
+Regression coverage checks matching focused-pattern and copilot results from the same RTS client, plus demo planning without upstream calls and fixture-based focused-route caching.

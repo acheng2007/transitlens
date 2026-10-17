@@ -15,6 +15,9 @@ Route discovery, route highlighting and boarding-stop guidance are still planned
 See [Gemini verification](GEMINI_VERIFICATION.md).
 Physical iPhone acceptance for the new map remains pending.
 See [street-map verification](STREET_MAP_VERIFICATION.md).
+The following transit-data milestone adds RTS route patterns, derived stops, deterministic route and stop queries, direct-service discovery, and the focused bus's route on the minimap.
+This completes milestone 4a's first grounded-tools items; Gemini integration, highlighted-route actions, and guidance remain open.
+See [transit routes verification](TRANSIT_ROUTES_VERIFICATION.md).
 
 ## Expanded hackathon checkpoint
 

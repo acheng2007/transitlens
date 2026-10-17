@@ -1,10 +1,22 @@
 import fixture from '../../shared/fixtures/gainesville-network.json';
 import type { RouteOverlay } from '../../shared/journey';
+import type { TransitPattern } from '../../shared/transit';
 import type { Bus, BusFeed } from './buses';
 import { REITZ_CENTER, relativeBuses } from './buses';
 import { bearingDeg, haversineKm } from './geo';
 
 export const DEMO_PATTERNS = fixture.patterns as RouteOverlay[];
+/** Focused-route overlays in showcase mode use the fixture without live requests. */
+export function demoPattern(id: string): TransitPattern | null {
+  const route = DEMO_PATTERNS.find(p => p.patternId === id);
+  if (!route) return null;
+  return {
+    id, routeId: route.routeId, routeDisplay: route.routeId, routeName: route.name,
+    routeColor: route.color, direction: route.direction, lengthKm: null, detour: false,
+    points: route.shape.map(p => [p.lat, p.lon]),
+    stops: route.stops.map((s, sequence) => ({ ...s, sequence, distanceKm: null })),
+  };
+}
 /** Explicit synthetic feed, with movement along captured real route geometry. */
 export function startDemoFeed(): BusFeed {
   const started = performance.now();
