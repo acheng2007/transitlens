@@ -10,7 +10,7 @@
 // Transit receives a shared street-map frame; the native aircraft renderer retains its radar.
 // The middle of the view stays clear.
 
-import { aircraftStatus, busCard, cardLines, flightLabel, statusTag } from './format';
+import { aircraftStatus, busCard, busFields, cardLines, flightLabel, statusTag } from './format';
 import type { AircraftStatus } from './format';
 import { halfFovDeg, normalizeDeg, projectX, signedDiffDeg } from './geo';
 import type { Plane } from './planes';
@@ -57,6 +57,8 @@ export type HudState<T = Plane> = {
   dwellProgress?: number;
   /** Phone view (no headset): no lens edges to avoid, so the compass sits higher and wider. */
   mobile?: boolean;
+  /** Transit palette; follows the app's light/dark appearance. */
+  theme?: HudTheme;
 };
 
 const COLORS = {
@@ -68,24 +70,59 @@ const COLORS = {
   shadow: 'rgba(0, 0, 0, 0.8)',
 };
 
+export type HudTheme = 'light' | 'dark';
+
 /**
- * Transit design tokens (mirror the CSS variables in style.css). Panels are near-opaque and unblurred
- * so text stays sharp through the lenses and readable over a bright outdoor camera image.
+ * Transit palettes (mirror the #stereo CSS tokens in style.css). Lines and labels drawn straight on the
+ * camera are white with a soft shadow in both themes; cards, badges and pills use near-opaque surfaces
+ * (no blur: it smears in Cardboard lenses) so text stays readable outdoors.
  */
-const T = {
-  primary: '#a7b8ff',
-  primaryDim: 'rgba(167, 184, 255, 0.55)',
-  primaryFaint: 'rgba(167, 184, 255, 0.28)',
-  secondary: '#8ce7db',
-  secondaryGlow: 'rgba(140, 231, 219, 0.65)',
-  text: '#f8fafc',
-  muted: '#c6cddb',
-  warning: '#ffcf7a',
-  glass: 'rgba(14, 19, 34, 0.82)',
-  glassBorder: 'rgba(255, 255, 255, 0.16)',
-  onAccent: '#0b1020',
-  shadow: 'rgba(0, 0, 0, 0.6)',
+const PALETTES = {
+  light: {
+    line: '#ffffff',
+    lineDim: 'rgba(255, 255, 255, 0.75)',
+    lineFaint: 'rgba(255, 255, 255, 0.45)',
+    accent: '#b7d9d0',
+    accentGlow: 'rgba(183, 217, 208, 0.7)',
+    onAccent: '#111111',
+    surface: 'rgba(255, 255, 255, 0.94)',
+    surfaceBorder: 'rgba(17, 17, 17, 0.08)',
+    text: '#111111',
+    muted: '#666666',
+    live: '#2fae7a',
+    warning: '#b07400',
+    okBg: '#e7f3ef',
+    okText: '#2f6f61',
+    warnBg: '#fdf1dc',
+    warnText: '#8a5a00',
+    rim: 'rgba(255, 255, 255, 0.95)',
+    shadow: 'rgba(0, 0, 0, 0.35)',
+    cardShadow: 'rgba(0, 0, 0, 0.22)',
+  },
+  dark: {
+    line: '#ffffff',
+    lineDim: 'rgba(255, 255, 255, 0.75)',
+    lineFaint: 'rgba(255, 255, 255, 0.45)',
+    accent: '#b7d9d0',
+    accentGlow: 'rgba(183, 217, 208, 0.6)',
+    onAccent: '#111111',
+    surface: 'rgba(24, 25, 27, 0.9)',
+    surfaceBorder: 'rgba(255, 255, 255, 0.1)',
+    text: '#f5f5f3',
+    muted: '#a8a8a8',
+    live: '#4cd59a',
+    warning: '#f0b54a',
+    okBg: 'rgba(183, 217, 208, 0.16)',
+    okText: '#b7d9d0',
+    warnBg: 'rgba(240, 181, 74, 0.18)',
+    warnText: '#f0b54a',
+    rim: 'rgba(255, 255, 255, 0.22)',
+    shadow: 'rgba(0, 0, 0, 0.5)',
+    cardShadow: 'rgba(0, 0, 0, 0.45)',
+  },
 };
+/** Active palette, set at the start of each drawHud() call from HudState.theme (same for both eyes). */
+let T = PALETTES.light;
 /** Card fade/slide-in after a bus is selected. */
 const BUS_CARD_ANIM_MS = 220;
 
@@ -128,9 +165,13 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: 
 export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState<Target>): HudResult<Target> {
   ctx.clearRect(0, 0, w, h);
   ctx.textBaseline = 'middle';
+  T = PALETTES[s.theme ?? 'light'];
   const result = drawPlanes(ctx, w, h, s);
   // Transit map frames remain independent of compass filtering and voice status.
-  if (s.mapFrame) drawStreetMap(ctx, w, h, s.mapFrame);
+  if (s.mapFrame) {
+    const selected = s.selectedFocusId ? (s.planes.find((p) => p.id === s.selectedFocusId) as Bus | undefined) ?? null : null;
+    drawStreetMap(ctx, w, h, s.mapFrame, selected && 'route' in selected ? selected : null);
+  }
   else if (s.headingDeg != null) {
     drawRadar(ctx, w, h, s, s.headingDeg, result.focus?.id ?? null);
   }
@@ -288,10 +329,10 @@ function drawPlanes(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudS
       const row = rows.get(m.p.id);
       if (m === focus || row == null || !('route' in m.p)) continue;
       const dwelling = m.p.id === s.dwellId;
-      drawBusBadge(ctx, m.x, barY, m.p.route, dwelling ? 'dwell' : 'idle', row, dwelling ? s.dwellProgress ?? 0 : 0);
+      drawBusBadge(ctx, m.x, barY, m.p, dwelling ? 'dwell' : 'idle', row, dwelling ? s.dwellProgress ?? 0 : 0);
     }
     if (!focus || !('route' in focus.p)) return { focus: null, inView };
-    drawBusBadge(ctx, focus.x, barY, focus.p.route, 'focus', rows.get(focus.p.id) ?? 0, 1);
+    drawBusBadge(ctx, focus.x, barY, focus.p, 'focus', rows.get(focus.p.id) ?? 0, 1);
     const t = Math.min(1, Math.max(0, (s.timeMs - (s.focusSinceMs ?? 0)) / BUS_CARD_ANIM_MS));
     if (!s.expandedMap) drawBusCard(ctx, w, focus.x, barY, focus.p, t);
     return { focus: { ...focus.p, offsetDeg: focus.off }, inView };
@@ -516,25 +557,39 @@ function drawAircraft(ctx: CanvasRenderingContext2D, x: number, y: number, p: Ta
   ctx.restore();
 }
 
-/** Bus route badges: pill height, rows they may stack into above the bar, gap between rows. */
-const BADGE_H = fs(17);
-const BADGE_FOCUS_H = fs(21);
+/** Bus route labels: pill height, rows they may stack into above the bar, gap between rows. */
+const BADGE_H = fs(18);
+const BADGE_FOCUS_H = fs(23);
 const BADGE_ROWS = 3;
 const BADGE_ROW_GAP = fs(4);
 
-const badgeFont = (focus: boolean) => `800 ${focus ? fs(15) : fs(12)}px ${FONT}`;
+const routeFont = (focus: boolean) => `800 ${focus ? fs(16) : fs(12.5)}px ${FONT}`;
+const distFont = `600 ${fs(9.5)}px ${FONT}`;
+/** Compact distance for labels: "0.3 mi" (one decimal under 10 mi). */
+const shortMiles = (km: number) => {
+  const mi = km / 1.609344;
+  return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
+};
 
-function badgeWidth(ctx: CanvasRenderingContext2D, route: string, focus: boolean): number {
+/** Label layout: route number (+ distance unless focused, where the card shows it). */
+function badgeMetrics(ctx: CanvasRenderingContext2D, b: Bus, focus: boolean) {
   ctx.save();
-  ctx.font = badgeFont(focus);
-  const w = ctx.measureText(route).width + (focus ? fs(18) : fs(14));
+  ctx.font = routeFont(focus);
+  const routeW = ctx.measureText(b.route).width;
+  ctx.font = distFont;
+  const dist = focus ? '' : shortMiles(b.distanceKm);
+  const distW = dist ? ctx.measureText(dist).width : 0;
   ctx.restore();
-  return Math.max(w, (focus ? BADGE_FOCUS_H : BADGE_H) * 1.4);
+  const h = focus ? BADGE_FOCUS_H : BADGE_H;
+  const padX = focus ? fs(11) : fs(8);
+  const gap = dist ? fs(5) : 0;
+  const w = Math.max(h * 1.3, routeW + gap + distW + padX * 2);
+  return { w, h, routeW, dist, distW, padX, gap };
 }
 
 /**
- * Assigns each bus badge a row so neighbors don't overlap: the focused bus, then the nearest,
- * get the row closest to the bar. Badges that fit in no row are skipped (they stay on the minimap).
+ * Assigns each bus label a row so neighbors don't overlap: the focused bus, then the nearest,
+ * get the row closest to the bar. Labels that fit in no row are skipped (they stay on the minimap).
  */
 function badgeRows(ctx: CanvasRenderingContext2D, markers: { p: Target; x: number }[], focusId: string | null) {
   const rows = new Map<string, number>();
@@ -544,7 +599,7 @@ function badgeRows(ctx: CanvasRenderingContext2D, markers: { p: Target; x: numbe
   );
   for (const m of order) {
     if (!('route' in m.p)) continue;
-    const half = badgeWidth(ctx, m.p.route, m.p.id === focusId) / 2 + 2;
+    const half = badgeMetrics(ctx, m.p, m.p.id === focusId).w / 2 + 3;
     const row = taken.findIndex((spans) => spans.every((s) => m.x + half < s.l || m.x - half > s.r));
     if (row < 0) continue;
     taken[row].push({ l: m.x - half, r: m.x + half });
@@ -556,68 +611,73 @@ function badgeRows(ctx: CanvasRenderingContext2D, markers: { p: Target; x: numbe
 type BadgeState = 'idle' | 'dwell' | 'focus';
 
 /**
- * Route-number pill above the bar with a stem down to the bus's exact bearing. While a bus dwells
- * in the focus cone the badge fills with teal; once selected it turns solid teal and glows.
+ * Floating route label above the bar, with a thin stem down to the bus's exact bearing.
+ * Idle: surface pill with route + distance. Dwell: fills with the accent from the left.
+ * Selected: solid accent pill with a soft glow (route only; the card shows the details).
  */
-function drawBusBadge(ctx: CanvasRenderingContext2D, x: number, barY: number, route: string, state: BadgeState, row: number, dwellT: number) {
+function drawBusBadge(ctx: CanvasRenderingContext2D, x: number, barY: number, b: Bus, state: BadgeState, row: number, dwellT: number) {
   const focus = state === 'focus';
-  const h = focus ? BADGE_FOCUS_H : BADGE_H;
-  const w = badgeWidth(ctx, route, focus);
+  const m = badgeMetrics(ctx, b, focus);
   const bottom = barY - fs(6) - row * (BADGE_H + BADGE_ROW_GAP);
-  const top = bottom - h;
-  const left = x - w / 2;
+  const top = bottom - m.h;
+  const left = x - m.w / 2;
 
   ctx.save();
-  ctx.strokeStyle = focus ? T.secondary : T.primaryDim;
+  ctx.shadowColor = T.shadow;
+  ctx.shadowBlur = 3;
+  ctx.strokeStyle = focus ? T.line : T.lineDim;
   ctx.lineWidth = focus ? 1.5 : 1;
   ctx.beginPath();
   ctx.moveTo(x, bottom);
   ctx.lineTo(x, barY);
   ctx.stroke();
-  ctx.fillStyle = focus ? T.secondary : T.primary;
+  ctx.fillStyle = focus ? T.accent : T.line;
   ctx.beginPath();
-  ctx.arc(x, barY, focus ? 3 : 2, 0, Math.PI * 2);
+  ctx.arc(x, barY, focus ? 3.2 : 2.2, 0, Math.PI * 2);
   ctx.fill();
 
-  roundRect(ctx, left, top, w, h, h / 2);
-  if (focus) {
-    ctx.shadowColor = T.secondaryGlow;
-    ctx.shadowBlur = 10;
-    ctx.fillStyle = T.secondary;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-  } else {
-    ctx.shadowColor = T.shadow;
-    ctx.shadowBlur = 4;
-    ctx.fillStyle = T.glass;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    if (state === 'dwell' && dwellT > 0) {
-      // Dwell: the badge fills with teal from the left until the card opens.
-      ctx.save();
-      ctx.clip();
-      ctx.fillStyle = 'rgba(140, 231, 219, 0.45)';
-      ctx.fillRect(left, top, w * dwellT, h);
-      ctx.restore();
-      roundRect(ctx, left, top, w, h, h / 2);
-    }
-    ctx.strokeStyle = state === 'dwell' ? T.secondary : T.primaryDim;
+  roundRect(ctx, left, top, m.w, m.h, m.h / 2);
+  ctx.shadowColor = focus ? T.accentGlow : T.cardShadow;
+  ctx.shadowBlur = focus ? 12 : 6;
+  ctx.shadowOffsetY = focus ? 0 : 1;
+  ctx.fillStyle = focus ? T.accent : T.surface;
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  if (state === 'dwell' && dwellT > 0) {
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = T.accent;
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(left, top, m.w * dwellT, m.h);
+    ctx.restore();
+    roundRect(ctx, left, top, m.w, m.h, m.h / 2);
+  }
+  if (!focus) {
+    ctx.strokeStyle = state === 'dwell' ? T.accent : T.surfaceBorder;
     ctx.lineWidth = state === 'dwell' ? 1.5 : 1;
     ctx.stroke();
   }
 
-  ctx.font = badgeFont(focus);
-  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  const cy = top + m.h / 2 + 0.5;
+  let tx = left + (m.w - (m.routeW + m.gap + m.distW)) / 2;
+  ctx.font = routeFont(focus);
   ctx.fillStyle = focus ? T.onAccent : T.text;
-  ctx.fillText(route, x, top + h / 2 + 0.5);
+  ctx.fillText(b.route, tx, cy);
+  if (m.dist) {
+    tx += m.routeW + m.gap;
+    ctx.font = distFont;
+    ctx.fillStyle = state === 'dwell' ? T.text : T.muted;
+    ctx.fillText(m.dist, tx, cy);
+  }
   ctx.restore();
 }
 
 const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const cardinal = (deg: number) => CARDINALS[Math.round(normalizeDeg(deg) / 45) % 8];
 
-/** Compact headband compass: a bar that fades at the ends, light ticks, and a heading pill. */
+/** Compact compass: a thin bar that fades at the ends, light ticks, and a heading pill. */
 function drawTransitCompass(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -632,14 +692,16 @@ function drawTransitCompass(
   const readout = `${Math.round(normalizeDeg(heading))}° ${cardinal(heading)}`;
   ctx.save();
   ctx.font = `700 ${fs(11)}px ${FONT}`;
-  const pillW = ctx.measureText(readout).width + fs(16);
-  const pillH = fs(11) + 8;
+  const pillW = ctx.measureText(readout).width + fs(18);
+  const pillH = fs(11) + 9;
 
+  ctx.shadowColor = T.shadow;
+  ctx.shadowBlur = 3;
   const bar = ctx.createLinearGradient(x0, 0, x1, 0);
-  bar.addColorStop(0, 'rgba(167, 184, 255, 0)');
-  bar.addColorStop(0.18, T.primaryDim);
-  bar.addColorStop(0.82, T.primaryDim);
-  bar.addColorStop(1, 'rgba(167, 184, 255, 0)');
+  bar.addColorStop(0, 'rgba(255, 255, 255, 0)');
+  bar.addColorStop(0.18, T.lineDim);
+  bar.addColorStop(0.82, T.lineDim);
+  bar.addColorStop(1, 'rgba(255, 255, 255, 0)');
   ctx.strokeStyle = bar;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -655,10 +717,9 @@ function drawTransitCompass(
     if (x == null || x < x0 || x > x1) continue;
     const deg = normalizeDeg(d);
     const major = deg % 30 === 0;
-    // Fade toward the lens edges.
-    const fade = 1 - Math.pow(Math.abs(x - mid) / span, 3);
-    ctx.globalAlpha = Math.max(0, fade);
-    ctx.strokeStyle = major ? T.primary : T.primaryFaint;
+    // Fade toward the edges.
+    ctx.globalAlpha = Math.max(0, 1 - Math.pow(Math.abs(x - mid) / span, 3));
+    ctx.strokeStyle = major ? T.line : T.lineFaint;
     ctx.lineWidth = major ? 1.5 : 1;
     ctx.beginPath();
     ctx.moveTo(x, barY);
@@ -666,28 +727,25 @@ function drawTransitCompass(
     ctx.stroke();
     if (major && Math.abs(x - mid) > pillW / 2 + fs(10)) {
       const name = ({ 0: 'N', 90: 'E', 180: 'S', 270: 'W' } as Record<number, string>)[deg];
-      label(ctx, x, labelY, name ?? String(deg), fs(name ? 11 : 9), name ? T.text : T.muted, 'center', !!name);
+      label(ctx, x, labelY, name ?? String(deg), fs(name ? 11 : 9), name ? T.line : T.lineDim, 'center', !!name);
     }
   }
   ctx.globalAlpha = 1;
 
   // Center mark and heading pill.
-  ctx.strokeStyle = T.secondary;
+  ctx.strokeStyle = T.accent;
   ctx.lineWidth = 2;
   ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(mid, barY - 4);
   ctx.lineTo(mid, barY + 5);
   ctx.stroke();
-  ctx.shadowColor = T.shadow;
-  ctx.shadowBlur = 4;
+  ctx.shadowColor = T.cardShadow;
+  ctx.shadowBlur = 6;
   roundRect(ctx, mid - pillW / 2, labelY - pillH / 2, pillW, pillH, pillH / 2);
-  ctx.fillStyle = T.glass;
+  ctx.fillStyle = T.surface;
   ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = T.glassBorder;
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  ctx.shadowColor = 'transparent';
   ctx.fillStyle = T.text;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -703,115 +761,109 @@ function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxW: number): s
   return `${t.trimEnd()}…`;
 }
 
+/** Small rounded status chip (delay tag) at (x, y); returns its width. */
+function tagChip(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, delayed: boolean, maxW: number) {
+  const size = fs(9);
+  const h = fs(16);
+  ctx.font = `700 ${size}px ${FONT}`;
+  const w = Math.min(maxW, ctx.measureText(text).width + fs(14));
+  roundRect(ctx, x, y, w, h, h / 2);
+  ctx.fillStyle = delayed ? T.warnBg : T.okBg;
+  ctx.fill();
+  ctx.fillStyle = delayed ? T.warnText : T.okText;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(ellipsize(ctx, text, w - fs(14)), x + fs(7), y + h / 2 + 0.5);
+  return w;
+}
+
 /**
- * Glass detail card for the selected bus, hanging under the compass: route chip, destination,
- * stats, and the delay tag. `t` is the fade/slide-in progress 0..1.
+ * Detail card for the selected bus, hanging under the compass: route tile, destination, stats,
+ * and the delay tag (inline when it fits). `t` is the fade/slide-in progress 0..1.
  */
 function drawBusCard(ctx: CanvasRenderingContext2D, w: number, mx: number, barY: number, b: Bus, t: number) {
   const c = busCard(b);
-  const tag = statusTag(b);
+  const tag = statusTag(b) ? busFields(b).delay : null;
   const ease = 1 - Math.pow(1 - t, 3);
-  const pad = fs(10);
-  const gap = fs(9);
-  const chipH = fs(24);
-  const destSize = fs(14);
+  const pad = fs(11);
+  const gap = fs(10);
+  const tile = fs(30);
+  const destSize = fs(14.5);
   const statsSize = fs(11);
-  const tagSize = fs(8.5);
-  const tagH = fs(15);
+  const tagH = fs(16);
   const maxW = Math.min(w * 0.8, w - 12);
 
   ctx.save();
   ctx.globalAlpha = ease;
-  ctx.font = `800 ${fs(15)}px ${FONT}`;
-  const chipW = Math.max(ctx.measureText(c.route).width + fs(16), chipH * 1.25);
+  ctx.font = `800 ${fs(17)}px ${FONT}`;
+  const tileW = Math.max(tile, ctx.measureText(c.route).width + fs(14));
   ctx.font = `700 ${destSize}px ${FONT}`;
   const destW = ctx.measureText(c.destination).width;
   ctx.font = `500 ${statsSize}px ${FONT}`;
   const statsW = ctx.measureText(c.stats).width;
-  ctx.font = `800 ${tagSize}px ${FONT}`;
+  ctx.font = `700 ${fs(9)}px ${FONT}`;
   const tagW = tag ? ctx.measureText(tag).width + fs(14) : 0;
 
-  // The tag shares the stats line when it fits, keeping the card short and the center clear.
   const tagGap = fs(8);
-  const inline = !!tag && pad * 2 + chipW + gap + statsW + tagGap + tagW <= maxW;
+  const inline = !!tag && pad * 2 + tileW + gap + statsW + tagGap + tagW <= maxW;
   const textW = Math.max(destW, inline ? statsW + tagGap + tagW : Math.max(statsW, tagW));
-  const cardW = Math.min(maxW, pad * 2 + chipW + gap + textW);
-  const cardH = pad * 2 + Math.max(chipH, destSize + 5 + Math.max(statsSize, inline ? tagH : 0) + (tag && !inline ? 7 + tagH : 0));
+  const cardW = Math.min(maxW, pad * 2 + tileW + gap + textW);
+  const textH = destSize + 6 + Math.max(statsSize, inline ? tagH : 0) + (tag && !inline ? 7 + tagH : 0);
+  const cardH = pad * 2 + Math.max(tile, textH);
   const x = Math.max(6, Math.min(w - cardW - 6, mx - cardW / 2));
-  const y = labelRowY(barY) + fs(14) - (1 - ease) * 6;
-  const r = fs(14);
+  const y = labelRowY(barY) + fs(16) - (1 - ease) * 6;
+  const r = fs(18);
 
-  // Panel
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-  ctx.shadowBlur = 14;
+  ctx.shadowColor = T.cardShadow;
+  ctx.shadowBlur = 18;
   ctx.shadowOffsetY = 4;
   roundRect(ctx, x, y, cardW, cardH, r);
-  ctx.fillStyle = T.glass;
+  ctx.fillStyle = T.surface;
   ctx.fill();
   ctx.shadowColor = 'transparent';
-  ctx.strokeStyle = T.glassBorder;
+  ctx.strokeStyle = T.surfaceBorder;
   ctx.lineWidth = 1;
   ctx.stroke();
-  // Teal hairline along the top edge ties the card to the selected badge.
-  const hl = ctx.createLinearGradient(x, 0, x + cardW, 0);
-  hl.addColorStop(0, 'rgba(140, 231, 219, 0)');
-  hl.addColorStop(0.5, T.secondary);
-  hl.addColorStop(1, 'rgba(140, 231, 219, 0)');
-  ctx.strokeStyle = hl;
-  ctx.beginPath();
-  ctx.moveTo(x + r, y + 0.5);
-  ctx.lineTo(x + cardW - r, y + 0.5);
-  ctx.stroke();
 
-  // Route chip
-  const cx = x + pad;
-  const cy = y + pad;
-  roundRect(ctx, cx, cy, chipW, chipH, fs(8));
-  ctx.fillStyle = T.secondary;
+  // Route tile
+  const tx0 = x + pad;
+  const ty0 = y + (cardH - tile) / 2;
+  roundRect(ctx, tx0, ty0, tileW, tile, fs(10));
+  ctx.fillStyle = T.accent;
   ctx.fill();
-  ctx.font = `800 ${fs(15)}px ${FONT}`;
+  ctx.font = `800 ${fs(17)}px ${FONT}`;
   ctx.fillStyle = T.onAccent;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(c.route, cx + chipW / 2, cy + chipH / 2 + 0.5);
+  ctx.fillText(c.route, tx0 + tileW / 2, ty0 + tile / 2 + 0.5);
 
   // Text column
-  const tx = cx + chipW + gap;
+  const tx = tx0 + tileW + gap;
   const avail = x + cardW - pad - tx;
   ctx.textAlign = 'left';
-  let ty = cy + destSize / 2;
+  let ty = y + (cardH - textH) / 2 + destSize / 2;
   ctx.font = `700 ${destSize}px ${FONT}`;
-  ctx.fillStyle = T.text;
+  ctx.fillStyle = b.destination ? T.text : T.muted;
   ctx.fillText(ellipsize(ctx, c.destination, avail), tx, ty);
-  ty += destSize / 2 + 5 + statsSize / 2;
+  ty += destSize / 2 + 6 + Math.max(statsSize, inline ? tagH : 0) / 2;
   ctx.font = `500 ${statsSize}px ${FONT}`;
   ctx.fillStyle = T.muted;
   ctx.fillText(ellipsize(ctx, c.stats, inline ? statsW : avail), tx, ty);
-
   if (tag) {
     const delayed = b.delayed === true;
-    const color = delayed ? T.warning : T.secondary;
-    const tagX = inline ? tx + statsW + tagGap : tx;
-    const ty2 = inline ? ty - tagH / 2 : ty + statsSize / 2 + 7;
-    roundRect(ctx, tagX, ty2, Math.min(tagW, avail), tagH, tagH / 2);
-    ctx.fillStyle = delayed ? 'rgba(255, 207, 122, 0.16)' : 'rgba(140, 231, 219, 0.12)';
-    ctx.fill();
-    ctx.strokeStyle = delayed ? 'rgba(255, 207, 122, 0.6)' : 'rgba(140, 231, 219, 0.45)';
-    ctx.stroke();
-    ctx.font = `800 ${tagSize}px ${FONT}`;
-    ctx.fillStyle = color;
-    ctx.fillText(ellipsize(ctx, tag, avail - fs(14)), tagX + fs(7), ty2 + tagH / 2 + 0.5);
+    if (inline) tagChip(ctx, tx + statsW + tagGap, ty - tagH / 2, tag, delayed, avail);
+    else tagChip(ctx, tx, ty + statsSize / 2 + 7, tag, delayed, avail);
   }
   ctx.restore();
 }
 
-/** Nothing on the bar: a chevron at the bar's end toward the bus with the smallest turn. */
+/** Nothing on the bar: a soft chevron at the bar's end toward the bus with the smallest turn. */
 function drawBusEdgeArrow(ctx: CanvasRenderingContext2D, barY: number, x0: number, x1: number, p: Target, off: number) {
   const left = off < 0;
   const dir = left ? -1 : 1;
   const tip = left ? x0 - 2 : x1 + 2;
   ctx.save();
-  ctx.strokeStyle = T.secondary;
+  ctx.strokeStyle = T.line;
   ctx.lineWidth = 2;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -827,24 +879,31 @@ function drawBusEdgeArrow(ctx: CanvasRenderingContext2D, barY: number, x0: numbe
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
-  ctx.shadowBlur = 0;
 
-  const text = `${'route' in p ? `Route ${p.route}` : flightLabel(p)} · ${Math.round(Math.abs(off))}°`;
-  ctx.font = `700 ${fs(10)}px ${FONT}`;
-  const pw = ctx.measureText(text).width + fs(16);
-  const ph = fs(10) + 8;
+  const route = 'route' in p ? p.route : flightLabel(p);
+  const rest = ` · ${Math.round(Math.abs(off))}° ${left ? 'left' : 'right'}`;
+  ctx.font = `800 ${fs(10)}px ${FONT}`;
+  const rw = ctx.measureText(route).width;
+  ctx.font = `600 ${fs(10)}px ${FONT}`;
+  const restW = ctx.measureText(rest).width;
+  const pw = rw + restW + fs(18);
+  const ph = fs(10) + 10;
   const px = left ? x0 : x1 - pw;
   const py = labelRowY(barY) + fs(6);
+  ctx.shadowColor = T.cardShadow;
+  ctx.shadowBlur = 6;
   roundRect(ctx, px, py, pw, ph, ph / 2);
-  ctx.fillStyle = T.glass;
+  ctx.fillStyle = T.surface;
   ctx.fill();
-  ctx.strokeStyle = T.glassBorder;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.fillStyle = T.text;
-  ctx.textAlign = 'center';
+  ctx.shadowColor = 'transparent';
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, px + pw / 2, py + ph / 2 + 0.5);
+  ctx.font = `800 ${fs(10)}px ${FONT}`;
+  ctx.fillStyle = T.text;
+  ctx.fillText(route, px + fs(9), py + ph / 2 + 0.5);
+  ctx.font = `600 ${fs(10)}px ${FONT}`;
+  ctx.fillStyle = T.muted;
+  ctx.fillText(rest, px + fs(9) + rw, py + ph / 2 + 0.5);
   ctx.restore();
 }
 
@@ -859,24 +918,24 @@ function drawStatus(ctx: CanvasRenderingContext2D, w: number, h: number, status:
   ctx.font = `600 ${size}px ${FONT}`;
   const tw = Math.max(...lines.map((l) => ctx.measureText(l).width));
   const dot = fs(10);
-  const pw = Math.min(w * 0.84, tw + fs(20) + dot);
-  const ph = lines.length * lineH + 7;
+  const pw = Math.min(w * 0.84, tw + fs(22) + dot);
+  const ph = lines.length * lineH + 9;
   const x = (w - pw) / 2;
   const y = h * STATUS_Y - ph / 2;
-  roundRect(ctx, x, y, pw, ph, Math.min(ph / 2, fs(10)));
-  ctx.fillStyle = T.glass;
+  ctx.shadowColor = T.cardShadow;
+  ctx.shadowBlur = 6;
+  roundRect(ctx, x, y, pw, ph, Math.min(ph / 2, fs(12)));
+  ctx.fillStyle = T.surface;
   ctx.fill();
-  ctx.strokeStyle = T.glassBorder;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.fillStyle = warn ? T.warning : T.secondary;
+  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = warn ? T.warning : T.live;
   ctx.beginPath();
-  ctx.arc(x + fs(10), y + ph / 2, 2.5, 0, Math.PI * 2);
+  ctx.arc(x + fs(11), y + ph / 2, 3, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = T.text;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  lines.forEach((l, i) => ctx.fillText(l, x + fs(10) + dot - 2, y + 3.5 + lineH * (i + 0.5), pw - dot - fs(16)));
+  lines.forEach((l, i) => ctx.fillText(l, x + fs(11) + dot - 1, y + 4.5 + lineH * (i + 0.5), pw - dot - fs(18)));
   ctx.restore();
 }
 
@@ -1018,15 +1077,18 @@ function wrapStatus(status: string): string[] {
   return lines;
 }
 
-/** Floating minimap: circular (compact) or rounded square (expanded), glass rim, range chip. */
-function drawStreetMap(ctx: CanvasRenderingContext2D, w: number, h: number, f: MapFrame) {
+/**
+ * Floating minimap: circular (compact) or rounded square (expanded) with a light rim and range chip.
+ * In expanded mode the selected bus gets a compact panel at the bottom of the map (the main card is hidden).
+ */
+function drawStreetMap(ctx: CanvasRenderingContext2D, w: number, h: number, f: MapFrame, selected: Bus | null) {
   const expanded = f.mode === 'expanded';
   const size = expanded ? Math.min(w * 0.82, h * 0.46) : Math.min(w * 0.39, h * 0.33);
   const x = expanded ? (w - size) / 2 : w * 0.27 - size / 2;
   const y = h * 0.82 - size;
   const cx = x + size / 2;
   const shape = () => {
-    if (expanded) roundRect(ctx, x, y, size, size, fs(16));
+    if (expanded) roundRect(ctx, x, y, size, size, fs(20));
     else {
       ctx.beginPath();
       ctx.arc(cx, y + size / 2, size / 2, 0, Math.PI * 2);
@@ -1034,34 +1096,35 @@ function drawStreetMap(ctx: CanvasRenderingContext2D, w: number, h: number, f: M
   };
 
   ctx.save();
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-  ctx.shadowBlur = 16;
+  ctx.shadowColor = T.cardShadow;
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 4;
   shape();
-  ctx.fillStyle = T.glass;
+  ctx.fillStyle = T.surface;
   ctx.fill();
   ctx.restore();
 
   ctx.save();
   shape();
   ctx.clip();
-  ctx.globalAlpha = expanded ? 0.82 : 0.95;
+  ctx.globalAlpha = expanded ? 0.9 : 0.97;
   if (f.located) ctx.drawImage(f.canvas, x, y, size, size);
   ctx.restore();
 
   ctx.save();
   shape();
-  ctx.strokeStyle = T.primaryDim;
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = T.rim;
+  ctx.lineWidth = 2.5;
   ctx.stroke();
   // Heading-up marker at the top of the rim (or N when the compass is unavailable).
   if (f.located) {
-    if (f.northUp) label(ctx, cx, y + fs(9), 'N', fs(9), T.text, 'center', true);
+    if (f.northUp) label(ctx, cx, y + fs(10), 'N', fs(9), T.text, 'center', true);
     else {
-      ctx.fillStyle = T.secondary;
+      ctx.fillStyle = T.text;
       ctx.beginPath();
-      ctx.moveTo(cx, y + 7);
-      ctx.lineTo(cx - 4, y - 1);
-      ctx.lineTo(cx + 4, y - 1);
+      ctx.moveTo(cx, y + 8);
+      ctx.lineTo(cx - 4.5, y - 1);
+      ctx.lineTo(cx + 4.5, y - 1);
       ctx.closePath();
       ctx.fill();
     }
@@ -1070,15 +1133,15 @@ function drawStreetMap(ctx: CanvasRenderingContext2D, w: number, h: number, f: M
   // Range chip straddling the bottom of the rim.
   const caption = !f.located ? 'Waiting for location' : `${f.extentKm.toFixed(f.extentKm < 1 ? 2 : 1)} km${f.northUp ? ' · N up · no compass' : ''}`;
   ctx.font = `700 ${fs(8.5)}px ${FONT}`;
-  const cw = ctx.measureText(caption).width + fs(12);
-  const ch = fs(8.5) + 6;
+  const cw = ctx.measureText(caption).width + fs(14);
+  const ch = fs(8.5) + 8;
   const capY = y + size - ch / 2;
+  ctx.shadowColor = T.cardShadow;
+  ctx.shadowBlur = 4;
   roundRect(ctx, cx - cw / 2, capY, cw, ch, ch / 2);
-  ctx.fillStyle = T.glass;
+  ctx.fillStyle = T.surface;
   ctx.fill();
-  ctx.strokeStyle = T.glassBorder;
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  ctx.shadowColor = 'transparent';
   ctx.fillStyle = T.text;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -1087,17 +1150,51 @@ function drawStreetMap(ctx: CanvasRenderingContext2D, w: number, h: number, f: M
     // Fallback notice near the top of the map, clear of the markers around the center.
     ctx.font = `600 ${fs(8)}px ${FONT}`;
     const nw = ctx.measureText(f.status).width + fs(12);
-    const nh = fs(8) + 6;
+    const nh = fs(8) + 7;
     const ny = y + size * (expanded ? 0.06 : 0.16);
     roundRect(ctx, cx - nw / 2, ny, nw, nh, nh / 2);
-    ctx.fillStyle = T.glass;
+    ctx.fillStyle = T.surface;
     ctx.fill();
     ctx.fillStyle = T.warning;
     ctx.fillText(f.status, cx, ny + nh / 2 + 0.5);
   }
 
-  ctx.fillStyle = 'rgba(11, 16, 32, 0.85)';
-  ctx.fillRect(w * 0.08, h * 0.96 - 7, w * 0.84, 14);
+  // Expanded: compact panel for the selected bus inside the map's bottom edge.
+  if (expanded && selected) {
+    const fields = busFields(selected);
+    const ph = fs(30);
+    const pw = Math.min(size - fs(20), size * 0.9);
+    const px = cx - pw / 2;
+    const py = y + size - ch / 2 - ph - fs(8);
+    ctx.shadowColor = T.cardShadow;
+    ctx.shadowBlur = 8;
+    roundRect(ctx, px, py, pw, ph, fs(12));
+    ctx.fillStyle = T.surface;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.font = `800 ${fs(12)}px ${FONT}`;
+    const tileW = Math.max(fs(22), ctx.measureText(selected.route).width + fs(10));
+    roundRect(ctx, px + fs(5), py + fs(4), tileW, ph - fs(8), fs(8));
+    ctx.fillStyle = T.accent;
+    ctx.fill();
+    ctx.fillStyle = T.onAccent;
+    ctx.fillText(selected.route, px + fs(5) + tileW / 2, py + ph / 2 + 0.5);
+    ctx.textAlign = 'left';
+    const tx = px + fs(5) + tileW + fs(7);
+    ctx.font = `700 ${fs(10)}px ${FONT}`;
+    ctx.fillStyle = selected.destination ? T.text : T.muted;
+    const distW = (() => { ctx.save(); ctx.font = `600 ${fs(9.5)}px ${FONT}`; const m = ctx.measureText(fields.distance).width; ctx.restore(); return m; })();
+    ctx.fillText(ellipsize(ctx, selected.destination ?? 'Destination unknown', px + pw - tx - distW - fs(14)), tx, py + ph / 2 + 0.5);
+    ctx.font = `600 ${fs(9.5)}px ${FONT}`;
+    ctx.fillStyle = T.muted;
+    ctx.textAlign = 'right';
+    ctx.fillText(fields.distance, px + pw - fs(8), py + ph / 2 + 0.5);
+  }
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = T.surface;
+  roundRect(ctx, w * 0.08, h * 0.96 - 7, w * 0.84, 14, 7);
+  ctx.fill();
   ctx.fillStyle = T.muted;
   ctx.font = `8px ${FONT}`;
   ctx.fillText('OpenFreeMap © OpenMapTiles © OpenStreetMap', w / 2, h * 0.96);

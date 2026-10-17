@@ -65,7 +65,11 @@ export type Settings = {
   showGrounded: boolean;
   /** Capture the first set of aircraft and hold it (no movement, no more polling). */
   freezePlanes: boolean;
+  /** TransitLens appearance; 'system' follows the phone's light/dark setting. */
+  theme?: ThemeChoice;
 };
+
+export type ThemeChoice = 'system' | 'light' | 'dark';
 
 export type DataMode = 'demo' | 'live' | 'fixture' | 'sim';
 
