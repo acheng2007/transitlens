@@ -13,6 +13,7 @@ This supersedes the earlier requirement to implement an offline bus demo first.
 The current bounded scope is bus-service, normalized live vehicles, route-first compass markers, dwell cards, persistent minimap, casting, permission recovery, and iPhone sensor handling.
 The street-map milestone adds OpenFreeMap roads, compact/expanded shared map controls, and a saved independent 1-mile compass filter.
 Gemini, synthetic buses, transit route overlays, arrivals, navigation, and Mobile AR are deferred.
+A later transit-data milestone adds RTS routes, stops, direct-service queries, and the focused bus's route on the minimap; see [its verification](TRANSIT_ROUTES_VERIFICATION.md).
 The longer-term product requirements below remain planned.
 See [verification evidence](LIVE_RTS_VERIFICATION.md) before claiming hardware support or geographic alignment.
 

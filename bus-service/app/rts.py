@@ -41,7 +41,8 @@ def normalize(rows):
         buses[vid] = dict(id=vid, route=route, destination=text(row.get('des')), lat=lat, lon=lon,
                           headingDeg=heading % 360 if heading is not None and heading >= 0 else None,
                           speedMph=speed if speed is not None and speed >= 0 else None,
-                          delayed=delay, passengerLoad=load if load in ('FULL', 'HALF_EMPTY', 'EMPTY') else None)
+                          delayed=delay, passengerLoad=load if load in ('FULL', 'HALF_EMPTY', 'EMPTY') else None,
+                          patternId=text(row.get('pid')))
     return list(buses.values())
 
 
@@ -53,6 +54,8 @@ class RTS:
         self.routes_ttl = max(1, float(routes_ttl if routes_ttl is not None else os.getenv('RTS_ROUTES_TTL_SECONDS', '3600')))
         self.vehicles_ttl = max(1, float(vehicles_ttl if vehicles_ttl is not None else os.getenv('RTS_VEHICLES_TTL_SECONDS', '30')))
         self.daily_limit = max(100, int(os.getenv('RTS_DAILY_REQUEST_LIMIT', '10000')))
+        # Daily calls spent by other users of this client, such as the transit catalog.
+        self.reserved_daily_calls = 0
         self.routes = []
         self.routes_at = float('-inf')
         self.attempt_at = float('-inf')
@@ -88,8 +91,9 @@ class RTS:
             now = time.monotonic()
             # Keep the configured cache interval, increasing it only when needed
             # to stay within the provider's daily request allowance. Reserve
-            # route-catalog calls (including small configured route TTLs).
-            catalog_budget = math.ceil(86400 / self.routes_ttl)
+            # route-catalog calls (including small configured route TTLs) and
+            # the calls other catalog users declare.
+            catalog_budget = math.ceil(86400 / self.routes_ttl) + self.reserved_daily_calls
             batch_count = math.ceil(len(self.routes) / 10)
             interval = max(self.vehicles_ttl, batch_count * 86400 / max(1, self.daily_limit - catalog_budget))
             if now - self.attempt_at >= interval:

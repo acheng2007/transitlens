@@ -7,11 +7,15 @@ Read `AGENTS.md`, `README.md`, `docs/PRD.md`, and this plan before starting an a
 ## Starting point
 
 Implemented: live RTS vehicle service, bus HUD, shared dwell selection, Safari sensor handling, MapLibre/OpenFreeMap streets, compact/expanded maps, manual map actions, and a saved independent compass-distance filter defaulting to 1 mile.
+Stream B's first assignment is also implemented: RTS route patterns, derived stops, `/api/transit` route, pattern, nearby-stop, stop-search, and direct-service endpoints, plus vehicle `patternId`.
+Stream E's first overlay draws the focused bus's route pattern and stops on the shared minimap.
 The current map actions are `set_map_mode` and `set_map_extent` in `web/src/map-state.ts`.
-The recorded verification includes 12 passing web tests, web and Android compatibility builds, matching eyes, local casting, and map failure fallbacks.
-See [live-feed evidence](LIVE_RTS_VERIFICATION.md) and [street-map evidence](STREET_MAP_VERIFICATION.md).
+The recorded verification includes 16 passing web tests, 27 passing bus-service tests, web and Android compatibility builds, matching eyes, local casting, and map failure fallbacks.
+See [live-feed evidence](LIVE_RTS_VERIFICATION.md), [street-map evidence](STREET_MAP_VERIFICATION.md), and [transit routes evidence](TRANSIT_ROUTES_VERIFICATION.md).
 
-Not implemented: Gemini transit conversation, transit route geometry and stop queries, destination resolution, route overlays, stop guidance, synthetic bus demos, and Mobile AR.
+Stream C should call the `/api/transit` endpoints as Gemini tools, using the response types in `shared/transit.ts` and the [bus-service API reference](../bus-service/README.md#transit-routes-stops-and-direct-service).
+
+Not implemented: Gemini transit conversation, place geocoding beyond stop-name search, highlighted-route and stop-selection actions, stop guidance, synthetic bus demos, and Mobile AR.
 The native Android entry point tracks RTS buses through the shared transit feed.
 The reported iPhone 16 Pro location success does not verify compass alignment, map acceptance, or headset fusion.
 APK packaging is blocked by the missing JDK 21 toolchain.
