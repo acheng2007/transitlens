@@ -85,3 +85,18 @@ The earlier phone overlay check remains recorded in [transit verification](TRANS
 The merged tree passes 27 web tests, 36 bus-service tests and 16 voice-service tests.
 Web production and Android shared-module compatibility builds pass.
 Regression coverage checks matching focused-pattern and copilot results from the same RTS client, plus demo planning without upstream calls and fixture-based focused-route caching.
+
+## Discovery and copilot presentation
+
+This pass starts from the contributor's merged light redesign at `a959bd8` and keeps substantial presentation work isolated in `web/src/discovery.css` and `web/src/discovery.ts`.
+Home adds a captured-route schematic, route selection, destination shortcuts and a typed entry point into the existing copilot pipeline.
+The schematic marker is illustrative and never represents a live vehicle.
+Trip cards show route and direction, boarding and drop-off stops, straight-line stop distance, ride stop count, and the existing truthful arrival labels.
+The copilot exposes transcript, processing and error feedback, disables repeat prompt submission while thinking, and preserves typed input and destination clarification.
+All dynamic transit text uses DOM text nodes.
+
+All 32 web tests and the TypeScript/Vite production build pass.
+New geometry tests cover all fixture routes and stops, geographic orientation, panel bounds and preserved Mercator aspect.
+HTML nesting, unique control IDs and stylesheet parsing were also checked.
+No backend or canvas HUD changes are included in this pass.
+Visual browser and physical-device verification remain pending because the browser tool rejected access to the local preview URL under its URL security policy.

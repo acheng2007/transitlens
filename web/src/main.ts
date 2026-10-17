@@ -24,6 +24,7 @@ import type { View } from './stereo';
 import { showPhoneLink } from './phone-link';
 import { startHome } from './home';
 import { renderPermissions } from './permissions';
+import { initDiscovery, renderTripChoices, updateAssistantFeedback, updateCopilotConnection } from './discovery';
 import { createCastCompositor } from './cast/compositor';
 import type { CastCompositor } from './cast/compositor';
 import { startCastPublisher } from './cast/publisher';
@@ -217,24 +218,12 @@ function applyAssistantActions(actions: TransitAction[]): string {
 
 function renderJourneyOptions() {
   const host = document.getElementById('journey-options')!;
-  host.replaceChildren();
   document.getElementById('assistant-source')!.textContent = assistantSource;
-  const plan = journeyState.plan;
-  for (const [i, option] of (plan?.options ?? []).entries()) {
-    const button = document.createElement('button');
-    button.type = 'button'; button.className = 'journey-option';
-    button.style.setProperty('--route-color', option.color);
-    const title = document.createElement('strong'); title.textContent = `${i+1} · ROUTE ${option.routeId} · ${option.direction}`;
-    const detail = document.createElement('span'); detail.textContent = `${option.boardingStop.name} → ${option.alightingStop.name}`;
-    const meta = document.createElement('small'); meta.textContent = `${Math.round(option.walkKm*1000)} m straight-line to stop · ${option.rideStops} stops · ${arrivalLabel(option)}`;
-    button.append(title,detail,meta);
-    button.addEventListener('click', () => { journeyState = { ...journeyState, selectedJourneyId: option.id }; void voice?.ask('Guide me to the selected boarding stop'); });
-    host.append(button);
-  }
-  if (plan?.status === 'ambiguous') for (const stop of plan.destinations) {
-    const button = document.createElement('button'); button.type='button'; button.textContent=stop.name;
-    button.addEventListener('click', () => { void voice?.ask(`Show routes to ${stop.id}`); }); host.append(button);
-  }
+  renderTripChoices(host, journeyState, id => {
+    journeyState = { ...journeyState, selectedJourneyId: id };
+    renderJourneyOptions();
+    void voice?.ask('Guide me to the selected boarding stop');
+  }, stopId => { void voice?.ask(`Show routes to ${stopId}`); });
 }
 
 /** Latest computed half-FOV, for the calibration toast and debug line. */
@@ -286,7 +275,14 @@ async function initStartScreen() {
   restartHome();
   await refreshCameraList();
 
-  void fetch('/api/voice/health').then(r => r.json()).then(data => { document.getElementById('connection-status')!.textContent = data.hasKey ? 'Gemini key configured' : 'Add Gemini key · demo ready'; }).catch(() => { document.getElementById('connection-status')!.textContent = 'Start voice service · port 8002'; });
+  void fetch('/api/voice/health', { signal: AbortSignal.timeout(5000) }).then(r => {
+    if (!r.ok) throw new Error('Copilot service unavailable');
+    return r.json();
+  }).then(data => {
+    if (typeof data.hasKey !== 'boolean') throw new Error('Invalid copilot health response');
+    document.getElementById('connection-status')!.textContent = data.hasKey ? 'Gemini key configured' : 'Local commands · add Gemini key';
+    updateCopilotConnection(data.hasKey);
+  }).catch(() => { document.getElementById('connection-status')!.textContent = 'Copilot service unavailable'; updateCopilotConnection(null); });
   if (DEV) startStatus.textContent = 'Dev mode: ← → turn (hold Shift for 10°).';
   else if (!window.isSecureContext) {
     startStatus.textContent = 'Not a secure context: camera and sensors need HTTPS (use ngrok) or localhost.';
@@ -494,11 +490,12 @@ async function start() {
   renderJourneyOptions();
   voiceHud = { state: 'idle', transcript: null, answer: null, error: null, wakeEnabled: settings.voiceEnabled };
   assistantAnswer.textContent = '';
+  updateAssistantFeedback('idle', null, null);
   // Initialize recognition and audio inside the Start gesture, before camera awaits.
   voice = startVoice({
     listenForWake: settings.voiceEnabled,
     followUpMs: settings.voiceEnabled ? 7000 : 0,
-    onPartialTranscript: text => { voiceHud.transcript = text; },
+    onPartialTranscript: text => { voiceHud.transcript = text; updateAssistantFeedback(voiceHud.state, text, null); },
     onCaptureStart: () => conversation.capture(),
     requestAnswer: (question, signal) => {
       if (/read.*(?:sign|display)|scan.*bus|what.*(?:can you see|do you see)/i.test(question)) {
@@ -513,19 +510,22 @@ async function start() {
       return conversation.ask(question, signal);
     },
     ttsEndpoint: null,
-    onStateChange: state => { voiceHud.state = state; renderOverlay(); },
+    onStateChange: state => { voiceHud.state = state; updateAssistantFeedback(state, voiceHud.transcript, voiceHud.error); renderOverlay(); },
     onTranscript: text => {
       clearTimeout(answerTimer);
       voiceHud = { ...voiceHud, transcript: text, answer: null, error: null };
       assistantAnswer.textContent = 'Thinking…';
+      updateAssistantFeedback('thinking', text, null);
     },
     onAnswer: text => {
       voiceHud.answer = text;
       assistantAnswer.textContent = text;
+      updateAssistantFeedback(voiceHud.state, voiceHud.transcript, null);
       answerTimer = window.setTimeout(() => { voiceHud.answer = null; voiceHud.transcript = null; }, 25000);
     },
     onError: message => {
       voiceHud.error = message.includes('not supported') ? 'Use Ask Gemini to type a question' : message;
+      updateAssistantFeedback(voiceHud.state, voiceHud.transcript, voiceHud.error);
     },
   });
   // Both must start synchronously inside the tap (user-gesture requirements).
@@ -843,6 +843,15 @@ setInterval(() => {
 }, 500);
 
 initStartScreen();
+initDiscovery(async question => {
+  if (startBtn.disabled && !view) return;
+  if (!view) await start();
+  if (!view || !voice) return;
+  conversation.capture();
+  assistantPanel.showModal();
+  questionInput.focus();
+  void voice.ask(question);
+});
 
 document.getElementById('assistant-close')!.addEventListener('click', () => assistantPanel.close());
 document.getElementById('assistant-form')!.addEventListener('submit', e => {

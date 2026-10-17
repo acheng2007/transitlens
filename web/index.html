@@ -23,13 +23,14 @@
       } catch (e) {}
     </script>
     <link rel="stylesheet" href="/src/style.css" />
+    <link rel="stylesheet" href="/src/discovery.css" />
   </head>
   <body>
     <div id="start-screen">
       <!-- ============ Home ============ -->
       <main class="home" id="home">
         <header class="topbar enter" style="--i: 0">
-          <span class="wordmark">TransitLens</span>
+          <span class="wordmark"><span class="lens-mark" aria-hidden="true">↗</span>TransitLens<span class="city-edition">GAINESVILLE EDITION</span></span>
           <div class="topbar-right">
             <span class="live-pill" id="live-pill" data-state="connecting" role="status">
               <span class="live-dot"></span><span class="live-text">Connecting</span>
@@ -40,10 +41,12 @@
           </div>
         </header>
 
+        <div class="launch-intro">
         <section class="hero enter" style="--i: 1">
           <p class="eyebrow" id="greeting">Welcome</p>
-          <h1>Explore<br />Gainesville</h1>
-          <p class="lede">See the buses around you, in real time.</p>
+          <h1>Your city.<br /><span>In plain sight.</span></h1>
+          <p class="lede">Look at a bus. Ask where it goes.<br />Find your next move with Gemini.</p>
+          <div class="hero-capabilities"><span>Spatial AR</span><span>Voice copilot</span><span>Gainesville RTS</span></div>
         </section>
 
         <section class="cta enter" style="--i: 2">
@@ -67,6 +70,24 @@
           <p id="start-status" role="status"></p>
         </section>
 
+        </div>
+        <section class="discovery enter" style="--i: 3" aria-labelledby="discovery-title">
+          <div class="network-preview">
+            <div class="preview-heading"><span class="micro-label">A DIFFERENT WAY TO SEE YOUR CITY</span><span class="preview-source">CAPTURED RTS GEOMETRY</span></div>
+            <svg id="route-preview" viewBox="0 0 480 260" role="img" aria-label="Captured Gainesville RTS route geometry"></svg>
+            <div class="preview-footer"><div><span class="micro-label">EXPLORE A ROUTE</span><p id="preview-route-name">Gainesville RTS</p></div><div id="preview-route-tabs" aria-label="Preview route"></div></div>
+            <p class="preview-note"><span class="preview-key"></span>Route and stop locations from RTS. The highlighted marker is illustrative.</p>
+          </div>
+          <div class="copilot-launch">
+            <div class="copilot-heading"><span class="gemini-symbol" aria-hidden="true">✦</span><span class="micro-label">YOUR TRANSIT COPILOT</span><span id="home-copilot-status" class="copilot-status">Checking…</span></div>
+            <h2 id="discovery-title">Where are we going?</h2>
+            <p>Say it naturally. Discover direct routes, compare your options, and find the stop to board.</p>
+            <form id="home-question-form"><label class="visually-hidden" for="home-question">Ask a transit question</label><input id="home-question" maxlength="1000" placeholder="Show me routes to Shands" autocomplete="off" required /><button type="submit" aria-label="Open transit copilot">↗</button></form>
+            <div class="destination-shortcuts"><span>TRY ASKING</span><button type="button" data-launch-question="Show routes to Shands">Shands ↗</button><button type="button" data-launch-question="Show routes to Reitz Union">Reitz Union ↗</button><button type="button" data-launch-question="Highlight route 38">Route 38 ↗</button></div>
+            <p class="copilot-launch-note" id="home-copilot-note">Opens your selected view. You can always type instead of speaking.</p>
+          </div>
+        </section>
+
         <section class="nearby enter" style="--i: 3" aria-labelledby="nearby-title">
           <div class="section-head">
             <h2 id="nearby-title">Nearby buses</h2>
@@ -84,6 +105,12 @@
             <div class="bus-rail" id="bus-rail" role="list"></div>
           </div>
         </section>
+
+        <section class="field-guide enter" style="--i: 4" aria-label="How to use TransitLens">
+          <div class="field-guide-heading"><span class="micro-label">THREE MOVES. ONE CONVERSATION.</span><h2>From “what bus?”<br />to “let’s go.”</h2></div>
+          <ol><li><span>01</span><div><h3>Look to identify</h3><p>Hold a route marker in the center. Its destination and available bus details come into focus.</p></div></li><li><span>02</span><div><h3>Ask to explore</h3><p>“Hey Gemini, show routes to Shands.” Keep talking after the reply, or use the typed copilot.</p></div></li><li><span>03</span><div><h3>Choose where to board</h3><p>Compare direct trips and get a bearing to a stationary stop. Stop bearings are approximate, not walking directions.</p></div></li></ol>
+        </section>
+        <footer class="home-footer"><span>TRANSITLENS / GAINESVILLE, FL</span><span>Look. Ask. Go.</span></footer>
 
         <section class="phone-link enter" id="phone-link" style="--i: 4" hidden>
           <div class="qr" aria-hidden="true"></div>
@@ -215,8 +242,9 @@
 
     <dialog id="assistant-panel" aria-labelledby="assistant-title">
       <button id="assistant-close" type="button" aria-label="Close Gemini">Close</button>
-      <p class="eyebrow">YOUR TRANSIT COPILOT</p>
+      <p class="assistant-kicker"><span class="gemini-symbol" aria-hidden="true">✦</span> YOUR TRANSIT COPILOT</p>
       <h2 id="assistant-title">Ask Gemini</h2>
+      <p class="assistant-intro">Your next move, a conversation away.</p>
       <p id="assistant-source" class="connection-status">Ready</p>
       <div class="assistant-prompts">
         <button type="button" data-question="Where is this bus going?">Identify this bus</button>
@@ -225,14 +253,16 @@
         <button type="button" data-question="Read the bus sign">Read bus sign</button>
         <button type="button" data-question="Cancel guidance">Cancel trip</button>
       </div>
+      <div class="assistant-feedback" data-state="idle" role="status" aria-live="polite"><span class="assistant-activity" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span id="assistant-activity-label">Ask about a bus, route, or destination</span></div>
+      <p id="assistant-question-echo" hidden></p>
+      <p id="assistant-answer" role="status" aria-live="polite"></p>
+      <div id="journey-options"></div>
       <form id="assistant-form">
         <label for="assistant-question">What would you like to do?</label>
         <input id="assistant-question" name="question" maxlength="1000" placeholder="Get me to Shands" required autocomplete="off" />
         <button type="submit">Ask</button>
       </form>
-      <p id="assistant-answer" role="status" aria-live="polite"></p>
-      <div id="journey-options"></div>
-      <small>Direct routes use ordered RTS stop patterns. Stop guidance is approximate bearing and distance, not a verified walking path. Demo vehicles and demo arrival times are synthetic. "Read bus sign" sends one camera still to Gemini; ordinary questions use transit data only.</small>
+      <details class="assistant-data-note"><summary>About your data and guidance</summary><small>Direct routes use ordered RTS stop patterns. Stop guidance is approximate bearing and distance, not a verified walking path. Demo vehicles and demo arrival times are synthetic. "Read bus sign" sends one camera still to Gemini; ordinary questions use transit data only.</small></details>
     </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>

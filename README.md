@@ -79,6 +79,11 @@ For an app icon that opens full screen, use **Share → Add to Home Screen** (re
 - **Phone view** (default): hold the phone up, upright or sideways. Tap ✕ (or long-press) to go back.
 - **Google Cardboard**: pick it on the start screen and turn the phone sideways. iPhones need size and FOV calibration.
 
+The home screen includes an interactive schematic of captured RTS routes 9, 20 and 38, with an explicitly illustrative vehicle marker.
+Type a destination or choose a shortcut to open your selected view and ask the copilot.
+The copilot shows question and processing feedback, selectable trip cards with boarding and drop-off stops, arrival provenance, and explicit destination choices when names are ambiguous.
+Its connection badge distinguishes a configured Gemini key, local commands, and an unavailable service.
+
 Double-tap the middle to unlock calibration, then tap the middle to cycle controls (Phone: zoom, FOV; Cardboard: also tilt, spacing, shift, size) and the left/right thirds to adjust.
 
 Open `http://localhost:5173/?dev=1` for desktop development with arrow-key heading controls and a clearly labeled fixed Reitz Union location.
