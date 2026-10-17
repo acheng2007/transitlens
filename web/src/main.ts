@@ -2,7 +2,7 @@ import { createStreetMap } from './street-map';
 import { createMapState, applyMapAction, compassBuses, compassLimitKm } from './map-state';
 import type { MapAction } from './map-state';
 import { DEFAULT_IPD_MM, TRANSIT_SETTINGS as DEFAULT_SETTINGS, PRESETS, detectPreset, getPreset, loadSettings, pxPerMm, saveSettings } from './config';
-import type { Settings } from './config';
+import type { Settings, ThemeChoice } from './config';
 import { describeStream, getZoom, getZoomRange, listCameras, setZoom, startCamera } from './camera';
 import { halfFovDeg, normalizeDeg, visibleHalfTan } from './geo';
 import { drawHud } from './hud';
@@ -43,6 +43,31 @@ const stereoEl = document.getElementById('stereo')!;
 const permList = document.getElementById('perm-list')!;
 const modeCards = [...document.querySelectorAll<HTMLElement>('[data-mode-view]')];
 const settingsEl = document.getElementById('settings')!;
+const themeButtons = [...document.querySelectorAll<HTMLElement>('[data-theme-choice]')];
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+
+/** Resolved light/dark theme for the page, the HUD canvas and the map. */
+const currentTheme = (): 'light' | 'dark' => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+
+function applyTheme() {
+  const choice: ThemeChoice = settings.theme ?? 'system';
+  const theme = choice === 'system' ? (darkQuery.matches ? 'dark' : 'light') : choice;
+  document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0E0F10' : '#FAFAF8');
+  for (const b of themeButtons) {
+    const on = b.dataset.themeChoice === choice;
+    b.classList.toggle('is-selected', on);
+    b.setAttribute('aria-checked', String(on));
+  }
+}
+for (const b of themeButtons) {
+  b.addEventListener('click', () => {
+    settings.theme = b.dataset.themeChoice as ThemeChoice;
+    saveSettings(settings, 'transitlens-settings-v1');
+    applyTheme();
+  });
+}
+darkQuery.addEventListener('change', () => { if ((settings.theme ?? 'system') === 'system') applyTheme(); });
 
 /** Home screen feed (nearby cards + live indicator); stopped while the AR view runs. */
 let home: ReturnType<typeof startHome> | null = null;
@@ -163,6 +188,7 @@ async function initStartScreen() {
   compassAll.checked = settings.compassDistanceMiles === null;
   compassInput.disabled = compassAll.checked;
   castCheck.checked = settings.castEnabled;
+  applyTheme();
   syncSliders();
   void renderPermissions(permList);
   restartHome();
@@ -270,13 +296,13 @@ function frame() {
   if (selectedFocusId !== lastFocusId) { lastFocusId = selectedFocusId; focusSinceMs = timeMs; }
   const dwell = busFocus.progress(timeMs);
   mapState = { ...mapState, center: feedState?.position ?? null, responseCenter: feedState?.responseCenter ?? null, headingDeg };
-  streetMap?.update({ state: mapState, buses: allBuses, focusId: selectedFocusId, halfFov: lastHalfFovDeg });
+  streetMap?.update({ state: mapState, buses: allBuses, focusId: selectedFocusId, halfFov: lastHalfFovDeg, theme: currentTheme() });
   const hud = {
     headingDeg, halfTan, buses: buses,
     status: [feedState?.status ?? '', orientationMessage, orientation?.get()?.northReference === 'magnetic' ? 'Magnetic heading - true-north correction pending' : '', !DEV && headingDeg == null ? 'Compass unavailable - check motion permission' : ''].filter(Boolean).join(' · '),
     timeMs, voice: null,
     selectedFocusId, mapFrame: streetMap?.get(), expandedMap: mapState.mode === 'expanded',
-    focusSinceMs, dwellId: dwell.id, dwellProgress: dwell.t, mobile: isMobileView(),
+    focusSinceMs, dwellId: dwell.id, dwellProgress: dwell.t, mobile: isMobileView(), theme: currentTheme(),
   };
   // Selection is already resolved. Every renderer receives the same state.
   for (const eye of view.eyes) drawHud(eye.ctx, width, height, hud);
@@ -306,9 +332,9 @@ function drawCastCrosshair(ctx: CanvasRenderingContext2D, w: number, h: number) 
   ctx.beginPath();
   ctx.arc(w / 2, h / 2, 11, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.fillStyle = '#8ce7db';
+  ctx.fillStyle = '#b7d9d0';
   ctx.beginPath();
-  ctx.arc(w / 2, h / 2, 1.5, 0, Math.PI * 2);
+  ctx.arc(w / 2, h / 2, 2, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -349,7 +375,10 @@ function renderOverlay() {
   const close = isMobileView() ? '<button class="view-close" data-exit aria-label="Back to settings"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' : '';
   const toastHtml = toast ? `<div class="toast">${toast}</div>` : '';
   const calib = mode ? `<div class="calib">${modes().map((m) => `<span${m === mode ? ' class="on"' : ''}>${m}</span>`).join('')}</div>` : '';
-  const controls = `<div class="map-controls${mapState.mode === 'expanded' ? ' is-expanded' : ''}"><button data-map="toggle" aria-pressed="${mapState.mode === 'expanded'}">${mapState.mode === 'expanded' ? 'Close' : 'Map'}</button><button data-map="in" aria-label="Zoom map in">+</button><button data-map="out" aria-label="Zoom map out">−</button></div>`;
+  const expanded = mapState.mode === 'expanded';
+  const icon = (d: string) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+  const toggleIcon = expanded ? icon('M6 6l12 12M18 6L6 18') : icon('M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5');
+  const controls = `<div class="map-controls${expanded ? ' is-expanded' : ''}"><button data-map="toggle" aria-pressed="${expanded}" aria-label="${expanded ? 'Close map' : 'Open map'}">${toggleIcon}</button><button data-map="in" aria-label="Zoom map in">${icon('M12 5v14M5 12h14')}</button><button data-map="out" aria-label="Zoom map out">${icon('M5 12h14')}</button></div>`;
   const credits = '<div class="map-credits" data-map-credit><a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>';
   const html = `${credits}${mapState.mode === 'compact' ? '<div class="crosshair"></div>' : ''}${controls}${error}${resume}${close}${calib}${toastHtml}${debug}`;
   for (const eye of view.eyes) eye.overlay.innerHTML = html;

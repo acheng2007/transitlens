@@ -1,5 +1,6 @@
 /* ============ Design tokens (light, editorial). hud.ts mirrors the AR-relevant ones. ============ */
 :root {
+  color-scheme: light;
   /* Color */
   --bg: #fafaf8;
   --surface: #ffffff;
@@ -50,6 +51,70 @@
   --dur-fast: 150ms;
   --dur: 280ms;
   --dur-slow: 560ms;
+}
+
+/* Dark theme: same editorial system, inverted. Set by applyTheme() in main.ts (System / Light / Dark). */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0e0f10;
+  --surface: #18191b;
+  --surface-2: #222426;
+  --text: #f5f5f3;
+  --text-2: #9b9b9b;
+  --text-3: #6a6a6a;
+  --border: #2c2e30;
+  --accent: #b7d9d0;
+  --accent-ink: #b7d9d0;
+  --btn: #f5f5f3;
+  --btn-text: #111111;
+  --live: #4cd59a;
+  --warn: #f0b54a;
+  --danger: #ff6b62;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --shadow-btn: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme='dark'] .start-arrow {
+  color: #111111;
+}
+
+:root[data-theme='dark'] .chip.delayed {
+  background: rgba(240, 181, 74, 0.16);
+  color: #f0b54a;
+}
+
+:root[data-theme='dark'] .chip.ontime {
+  background: rgba(183, 217, 208, 0.14);
+  color: #b7d9d0;
+}
+
+:root[data-theme='dark'] .switch {
+  background: #3a3c3e;
+}
+
+:root[data-theme='dark'] .toggle input:checked + .switch {
+  background: var(--accent);
+}
+
+:root[data-theme='dark'] .settings-bar {
+  background: rgba(34, 36, 38, 0.85);
+}
+
+:root[data-theme='dark'] .settings select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239b9b9b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 10l5 5 5-5'/%3E%3C/svg%3E");
+}
+
+:root[data-theme='dark'] .segment.is-selected {
+  background: #3a3c3e;
+}
+
+:root[data-theme='dark'] .settings .segmented {
+  background: var(--surface-2);
+}
+
+:root[data-theme='dark'] .settings {
+  background: var(--bg);
 }
 
 * {
@@ -476,6 +541,7 @@ button {
   padding: 0 10px;
   border-radius: 18px;
   background: var(--accent);
+  color: #111111;
   font: 800 1.6rem / 1 var(--font-display);
   letter-spacing: -0.03em;
 }
@@ -809,7 +875,7 @@ input[type='range']::-webkit-slider-thumb {
   height: 26px;
   margin-top: -11px;
   border-radius: 50%;
-  background: var(--surface);
+  background: #ffffff;
   border: 0;
   box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 3px 8px rgba(0, 0, 0, 0.16);
 }
@@ -818,7 +884,7 @@ input[type='range']::-moz-range-thumb {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--surface);
+  background: #ffffff;
   border: 0;
   box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 3px 8px rgba(0, 0, 0, 0.16);
 }
@@ -904,20 +970,31 @@ input[type='range']:disabled {
 
 /* ============ AR view ============ */
 
-/* Legacy dark overlay tokens, scoped to the AR view until its overlay is restyled. */
+/*
+ * AR overlay tokens. Over a live camera image both themes use near-opaque surfaces (no blur:
+ * it smears in Cardboard lenses) so text stays readable outdoors. hud.ts mirrors these in PALETTES.
+ */
 #stereo {
-  --fg: #f8fafc;
-  --muted: #a7b0c3;
-  --primary: #a7b8ff;
-  --secondary: #8ce7db;
-  --on-accent: #0b1020;
-  --glass-strong: rgba(17, 22, 38, 0.82);
-  --glass-border: rgba(255, 255, 255, 0.09);
-  --hud: rgba(167, 184, 255, 0.95);
-  --danger: #ff8a8a;
+  --hud-surface: rgba(255, 255, 255, 0.92);
+  --hud-surface-2: rgba(241, 242, 242, 0.95);
+  --hud-text: #111111;
+  --hud-text-2: #5f5f5f;
+  --hud-border: rgba(17, 17, 17, 0.08);
+  --hud-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  --hud-btn: #111111;
+  --hud-btn-text: #ffffff;
 }
 
-/* ---------- Stereo view ---------- */
+:root[data-theme='dark'] #stereo {
+  --hud-surface: rgba(24, 25, 27, 0.88);
+  --hud-surface-2: rgba(40, 42, 44, 0.92);
+  --hud-text: #f5f5f3;
+  --hud-text-2: #a8a8a8;
+  --hud-border: rgba(255, 255, 255, 0.1);
+  --hud-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --hud-btn: #f5f5f3;
+  --hud-btn-text: #111111;
+}
 
 #stereo {
   position: fixed;
@@ -957,7 +1034,7 @@ input[type='range']:disabled {
   container-type: size;
 }
 
-/* Everything below is set identically in both eyes by renderOverlay(). No blur: it smears in the lenses. */
+/* Everything below is set identically in both eyes by renderOverlay(). */
 
 .crosshair {
   position: absolute;
@@ -966,9 +1043,9 @@ input[type='range']:disabled {
   width: 22px;
   height: 22px;
   transform: translate(-50%, -50%);
-  border: 1.5px solid rgba(248, 250, 252, 0.85);
+  border: 1.5px solid rgba(255, 255, 255, 0.95);
   border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25), inset 0 0 0 1px rgba(0, 0, 0, 0.2);
 }
 
 .crosshair::after {
@@ -976,11 +1053,12 @@ input[type='range']:disabled {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 3px;
-  height: 3px;
+  width: 4px;
+  height: 4px;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: var(--secondary);
+  background: var(--accent);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
 }
 
 .debug {
@@ -992,9 +1070,8 @@ input[type='range']:disabled {
   max-width: 90%;
   padding: 3px 8px;
   border-radius: 8px;
-  background: var(--glass-strong);
-  border: 1px solid var(--glass-border);
-  color: var(--muted);
+  background: var(--hud-surface);
+  color: var(--hud-text-2);
   font: 9px/1.35 var(--mono);
   white-space: nowrap;
 }
@@ -1004,15 +1081,14 @@ input[type='range']:disabled {
   left: 50%;
   top: 62%;
   transform: translateX(-50%);
-  padding: 4px 12px;
+  padding: 6px 14px;
   border-radius: var(--radius-pill);
-  background: var(--glass-strong);
-  border: 1px solid rgba(167, 184, 255, 0.4);
-  color: var(--fg);
+  background: var(--hud-surface);
+  color: var(--hud-text);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 650;
   white-space: nowrap;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--hud-shadow);
   animation: toast-in var(--dur) var(--ease);
 }
 
@@ -1023,7 +1099,7 @@ input[type='range']:disabled {
   }
 }
 
-/* Calibration step indicator (both eyes) */
+/* Calibration step indicator */
 .calib {
   position: absolute;
   left: 50%;
@@ -1033,24 +1109,24 @@ input[type='range']:disabled {
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-pill);
-  background: var(--glass-strong);
-  border: 1px solid var(--glass-border);
+  background: var(--hud-surface);
+  box-shadow: var(--hud-shadow);
   white-space: nowrap;
 }
 
 .calib span {
-  padding: 1px 5px;
+  padding: 2px 7px;
   border-radius: var(--radius-pill);
-  color: var(--muted);
-  font-size: 7.5px;
-  font-weight: 600;
+  color: var(--hud-text-2);
+  font-size: 8px;
+  font-weight: 650;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 
 .calib span.on {
-  background: var(--primary);
-  color: var(--on-accent);
+  background: var(--hud-btn);
+  color: var(--hud-btn-text);
 }
 
 .hud-error {
@@ -1061,22 +1137,22 @@ input[type='range']:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  background: rgba(40, 12, 20, 0.85);
-  border: 1px solid rgba(255, 138, 138, 0.6);
-  color: #ffe3e3;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--hud-surface);
+  color: var(--hud-text);
   font-size: 11px;
   font-weight: 600;
   text-align: center;
+  box-shadow: var(--hud-shadow);
 }
 
 .hud-error::before {
   content: '';
   flex: none;
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--danger);
 }
@@ -1086,46 +1162,50 @@ input[type='range']:disabled {
   left: 50%;
   top: 70%;
   transform: translateX(-50%);
-  padding: 4px 10px;
+  padding: 6px 12px;
   border-radius: var(--radius-pill);
-  background: var(--glass-strong);
-  border: 1px solid var(--glass-border);
-  color: var(--fg);
+  background: var(--hud-surface);
+  color: var(--hud-text);
   font-size: 11px;
+  font-weight: 600;
   white-space: nowrap;
+  box-shadow: var(--hud-shadow);
 }
 
-/* Phone view: back button, safe areas (notch / home indicator). */
+/* Round floating buttons (phone back button and map controls) */
+.view-close,
+.map-controls button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--hud-surface);
+  color: var(--hud-text);
+  box-shadow: var(--hud-shadow);
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast);
+}
+
+.view-close:active,
+.map-controls button:active {
+  transform: scale(0.92);
+}
+
 .view-close {
   position: absolute;
   top: calc(env(safe-area-inset-top) + 10px);
   left: calc(env(safe-area-inset-left) + 12px);
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--glass-border);
-  border-radius: 50%;
-  background: var(--glass-strong);
-  color: var(--fg);
-  box-shadow: var(--shadow-sm);
-  pointer-events: auto;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.view-close:active {
-  transform: scale(0.94);
+  width: 42px;
+  height: 42px;
 }
 
 .is-mobile .hud-error {
-  top: calc(env(safe-area-inset-top) + 10px);
-  left: calc(env(safe-area-inset-left) + 60px);
+  top: calc(env(safe-area-inset-top) + 13px);
+  left: calc(env(safe-area-inset-left) + 64px);
   right: calc(env(safe-area-inset-right) + 12px);
-}
-
-.is-mobile .map-controls {
-  right: calc(env(safe-area-inset-right) + 5%);
 }
 
 .map-buffer { position: fixed; left: -2048px; top: 0; width: 512px; height: 512px; pointer-events: none; }
@@ -1135,50 +1215,41 @@ input[type='range']:disabled {
   right: 9%;
   bottom: 19%;
   display: flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: var(--radius-pill);
-  background: var(--glass-strong);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-sm);
-  pointer-events: auto;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.is-mobile .map-controls {
+  right: calc(env(safe-area-inset-right) + 5%);
+}
+
+.map-controls button {
+  width: 38px;
+  height: 38px;
+}
+
+.map-controls button[data-map='toggle'][aria-pressed='true'] {
+  background: var(--hud-btn);
+  color: var(--hud-btn-text);
 }
 
 /* Expanded map: stack the controls vertically just right of the map (geometry from drawStreetMap). */
 .map-controls.is-expanded {
   flex-direction: column;
   right: auto;
-  left: calc(50cqw + min(41cqw, 23cqh) + 6px);
+  left: calc(50cqw + min(41cqw, 23cqh) + 8px);
   bottom: 18cqh;
 }
 
-.map-controls button {
-  display: grid;
-  place-items: center;
-  min-width: 34px;
-  min-height: 34px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--fg);
-  font: 600 13px var(--font);
-  touch-action: manipulation;
-  transition: background var(--dur-fast);
-}
-
-.map-controls button:active {
-  background: rgba(167, 184, 255, 0.25);
-}
-
-.map-controls button[data-map='toggle'] {
-  background: rgba(167, 184, 255, 0.18);
-  color: var(--primary);
-}
-
-.map-controls button[data-map='toggle'][aria-pressed='true'] {
-  background: var(--primary);
-  color: var(--on-accent);
+/* Tall view (upright phone): no room beside the map, so the row sits above its top-right corner.
+   Cardboard eyes are near-square and keep the side column. */
+@container (max-aspect-ratio: 3/4) {
+  .map-controls.is-expanded {
+    flex-direction: row;
+    left: auto;
+    right: calc(50cqw - min(41cqw, 23cqh));
+    bottom: calc(18cqh + min(82cqw, 46cqh) + 10px);
+  }
 }
 
 .map-credits {
@@ -1187,10 +1258,10 @@ input[type='range']:disabled {
   left: 8%;
   width: 84%;
   height: 14px;
-  background: rgba(11, 16, 32, 0.85);
-  border-radius: 4px;
+  border-radius: 7px;
+  background: var(--hud-surface);
   text-align: center;
-  color: var(--muted);
+  color: var(--hud-text-2);
   font: 8px/14px var(--font);
   pointer-events: auto;
 }

@@ -14,6 +14,14 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>TransitLens</title>
+    <script>
+      // Apply the saved theme before first paint (main.ts keeps it in sync afterwards).
+      try {
+        var t = (JSON.parse(localStorage.getItem('transitlens-settings-v1') || '{}').theme) || 'system';
+        if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -95,6 +103,18 @@
         </header>
         <div class="settings-scroll">
           <h1 class="settings-title">Settings</h1>
+
+          <h2 class="group-label">Appearance</h2>
+          <div class="group">
+            <div class="row row-stack">
+              <div class="segmented segmented-full" role="radiogroup" aria-label="Appearance">
+                <button class="segment is-selected" role="radio" aria-checked="true" data-theme-choice="system">System</button>
+                <button class="segment" role="radio" aria-checked="false" data-theme-choice="light">Light</button>
+                <button class="segment" role="radio" aria-checked="false" data-theme-choice="dark">Dark</button>
+              </div>
+              <p class="row-help">Applies to this screen and the AR view. System follows your phone's setting.</p>
+            </div>
+          </div>
 
           <h2 class="group-label">View</h2>
           <div class="group">

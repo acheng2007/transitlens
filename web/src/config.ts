@@ -60,7 +60,11 @@ export type Settings = {
   compassDistanceMiles?: number | null;
   /** Stream the view (camera + HUD) to /cast.html on a laptop over WebRTC. */
   castEnabled: boolean;
+  /** TransitLens appearance; 'system' follows the phone's light/dark setting. */
+  theme?: ThemeChoice;
 };
+
+export type ThemeChoice = 'system' | 'light' | 'dark';
 
 export type DataMode = 'demo' | 'live';
 

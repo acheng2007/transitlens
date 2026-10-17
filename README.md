@@ -56,7 +56,8 @@ The link changes each time `npm run phone` restarts.
 On the phone, tap **Start AR** and allow camera, location, and motion; iPhone asks for motion only from that tap.
 For an app icon that opens full screen, use **Share → Add to Home Screen** (re-add it after the link changes).
 
-- **Phone view** (default): hold the phone up, upright or sideways. Tap ✕ (or long-press) for settings.
+- **Home screen**: live RTS indicator, nearby-bus cards (tap **Use my location**), and **Enter AR**. Settings (top right) holds every option, including **Appearance: System / Light / Dark**, which also themes the AR view and map.
+- **Phone view** (default): hold the phone up, upright or sideways. Tap ✕ (or long-press) to go back.
 - **Google Cardboard**: pick it on the start screen and turn the phone sideways. iPhones need size and FOV calibration.
 
 Double-tap the middle to unlock calibration, then tap the middle to cycle controls (Phone: zoom, FOV; Cardboard: also tilt, spacing, shift, size) and the left/right thirds to adjust.
