@@ -2,7 +2,7 @@
 
 import fixture from '../../shared/fixtures/demo-planes.json';
 
-/** Mirrors the `Plane` contract in CLAUDE.md. */
+/** Shared inherited aircraft contract for browser and native compatibility. */
 export type Plane = {
   id: string;
   callsign: string | null;
@@ -26,7 +26,7 @@ export type Plane = {
   category?: string | null;
   /** 'helicopter' if category A7 or a known helicopter type; missing = treat as plane. */
   kind?: 'plane' | 'helicopter';
-  /** Status flags from flight-service (optional so older data still loads). See CLAUDE.md. */
+  /** Status flags from flight-service (optional so older data still loads). Unknown flags remain optional. */
   onGround?: boolean;
   /** Emergency type ("general", "minfuel", "nordo", "unlawful", "downed"), null if none. */
   emergency?: string | null;

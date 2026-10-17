@@ -1,4 +1,4 @@
-// Port of flight-service/app/normalize.py: readsb aircraft -> contract `Plane` (see CLAUDE.md).
+// Port of flight-service/app/normalize.py: readsb aircraft -> the shared browser Plane type.
 
 import type { Plane } from '@web/planes';
 import { bearingDeg, haversineKm } from './geo';

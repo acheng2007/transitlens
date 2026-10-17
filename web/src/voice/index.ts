@@ -1,4 +1,4 @@
-// Browser voice module (owner: Allison). See root CLAUDE.md for the contract.
+// Inherited browser voice module. Interfaces are defined in types.ts.
 //
 //   const voice = startVoice({ getCurrentPlane, getNearbyPlanes, onStateChange, onAnswer });
 //   ...

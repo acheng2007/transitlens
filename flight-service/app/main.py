@@ -1,4 +1,4 @@
-"""flight-service: GET /api/flights/nearby (see root CLAUDE.md for the contract)."""
+"""flight-service: GET /api/flights/nearby (inherited aircraft endpoint)."""
 import logging
 from datetime import datetime, timezone
 

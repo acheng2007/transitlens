@@ -1,6 +1,6 @@
 # voice-service/ — owner: Allison
 
-Python FastAPI service on port 8002. Serves `POST /api/voice/ask` per root `CLAUDE.md`, plus
+Python FastAPI service on port 8002. Serves `POST /api/voice/ask` using the request schemas in [main.py](main.py), plus
 `POST /api/voice/speak` (text → MP3 in Grok's "Leo" voice) for the browser module.
 Put `XAI_API_KEY` in `voice-service/.env` (never commit it). Optional: `XAI_MODEL` (default `grok-4-fast`).
 

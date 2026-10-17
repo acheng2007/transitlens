@@ -103,4 +103,3 @@ Gemini remains a planned transit copilot with authoritative route discovery and 
 See [PRD](docs/PRD.md), [roadmap](docs/ROADMAP.md), and [agent instructions](AGENTS.md).
 Assign remaining work using the [parallel work plan](docs/PARALLEL_WORK.md), which defines eight workstreams, owned paths, dependencies, acceptance gates, and reusable task prompts.
 
-[CLAUDE.md](CLAUDE.md) retains the original architecture and provenance.

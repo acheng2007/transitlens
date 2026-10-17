@@ -1,6 +1,6 @@
 # flight-service/ — owner: Wesley
 
-Python FastAPI service on port 8001. Serves `GET /api/flights/nearby` per root `CLAUDE.md`.
+Python FastAPI service on port 8001. Serves the inherited `GET /api/flights/nearby` endpoint defined in [app/main.py](app/main.py).
 
 ## Run
 

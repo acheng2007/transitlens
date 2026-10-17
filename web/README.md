@@ -12,7 +12,8 @@ Its aircraft data, product defaults, voice configuration, and provider instructi
 # web/ — owner: Jaiden
 
 Vite + TypeScript web app (camera, stereo view, heading, HUD, cone filter, integration).
-`web/src/voice/` is owned by **Allison**. See root `CLAUDE.md` for contracts and rules.
+Current instructions are in [AGENTS.md](../AGENTS.md), and collaborator assignments are in [the parallel work plan](../docs/PARALLEL_WORK.md).
+The remaining aircraft setup notes describe the inherited implementation.
 
 ## Run
 

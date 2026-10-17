@@ -313,7 +313,7 @@ REMOVE EVENTUALLY means leave it intact until references and compatibility requi
 | `web/src/vr/*` | REMOVE EVENTUALLY | Virtual Atlanta/aircraft simulation is outside TransitLens MVP; disable entry points before deletion |
 | `web/src/voice/*`, `voice-service/**` | MODIFY | Preserve Gemini, wake phrase, speech and fallback; replace aircraft context with grounded transit tools and validated map/guidance actions in milestone 4a |
 | `web/package.json`, `web/tsconfig.json`, Android package/TypeScript/Vite configuration | MODIFY | Preserve build paths and dependencies needed by active code; change only for actual migration requirements |
-| `CLAUDE.md`, upstream README files | MODIFY | Replace obsolete aviation contracts/workstream guidance with TransitLens instructions after import, preserving provenance |
+| Upstream README files | MODIFY | Replace obsolete aviation contracts/workstream guidance with TransitLens instructions after import, preserving provenance |
 
 The browser projection math is in `web/src/geo.ts`.
 The existing bearing and distance implementations are in `flight-service/app/geo.py` and the Android geographic helper.

@@ -1,7 +1,7 @@
 # web/src/voice/ — owner: Allison
 
 Browser-side voice module: wake phrase, speech-to-text, text-to-speech, calls `/api/voice/ask`.
-Exports `startVoice(...)` per the contract in root `CLAUDE.md`.
+Exports `startVoice(...)` using the interfaces in [types.ts](types.ts).
 
 ## Use (Jaiden's app)
 

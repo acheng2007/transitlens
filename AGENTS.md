@@ -16,7 +16,8 @@ Do not remove the inherited voice stack or minimap during migration.
 
 Read [README.md](README.md), [the PRD and its product update](docs/PRD.md), and [the implementation roadmap](docs/ROADMAP.md) before changing behavior.
 This file governs work in this repository.
-The original [CLAUDE.md](CLAUDE.md) remains useful architectural reference and provenance, but its aircraft contracts, named ownership restrictions, and obsolete product priorities do not govern TransitLens.
+Use this file for current project instructions and [the parallel work plan](docs/PARALLEL_WORK.md) for collaborator assignments.
+Upstream aircraft contracts, named ownership restrictions, and obsolete product priorities do not govern TransitLens.
 The current user's instructions take precedence over repository guidance.
 
 ## Current state and immediate scope

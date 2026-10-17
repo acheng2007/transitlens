@@ -3,7 +3,7 @@ voice-service — POST /api/voice/ask
 
 Takes a spoken question plus the plane the user is looking at, builds a prompt
 with that plane as context, asks Grok (xAI), and returns a short spoken-friendly
-answer. See root CLAUDE.md for the contract.
+answer. Request schemas are defined below.
 
 Run:  uvicorn main:app --port 8002 --reload
 """
@@ -40,7 +40,7 @@ XAI_TTS_VOICE = os.getenv("XAI_TTS_VOICE", "leo")  # eve | ara | leo | rex | sal
 FIXTURE_PATH = Path(__file__).parent.parent / "shared" / "fixtures" / "demo-planes.json"
 
 # ---------------------------------------------------------------------------
-# Models (mirror the `Plane` contract in CLAUDE.md; everything optional except
+# Models (mirror the inherited browser Plane type; everything optional except
 # position/distance/bearing, but we stay lenient so a partial plane never 422s)
 # ---------------------------------------------------------------------------
 
