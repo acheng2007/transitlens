@@ -67,7 +67,7 @@ Add `&camera=off` for a labeled blank background without requesting a camera.
 Press Escape to return to settings on a keyboard.
 Desktop mode fetches live RTS vehicles around that public location and does not use desktop GPS.
 Enable casting and open `/cast.html` on the laptop to view the shared HUD over WebRTC.
-The Vite proxy forwards `/api/buses` to port 8003 and retains the legacy service proxies.
+The Vite proxy forwards `/api/buses` and `/api/transit` to port 8003 and retains the legacy service proxies.
 
 If RTS fails, cached buses remain with their retrieval age and `LIVE DATA TEMPORARILY UNAVAILABLE`.
 A successful empty result says `No nearby buses`.
@@ -127,6 +127,20 @@ With no Gemini key, those commands are visibly labeled scripted/local tools, and
 Use [the showcase guide](docs/SHOWCASE.md) for a short presentation sequence.
 See [verification](docs/GEMINI_VERIFICATION.md) for completed and pending checks.
 
+## Routes and stops
+
+When no copilot route or trip is selected, the minimap draws the focused bus's current RTS pattern and stops in the route's color.
+The line uses the same projection as the bus markers in both eyes, casting, compact, expanded, and zoomed views.
+It stays for three seconds after focus is lost and clears immediately when a different bus is focused.
+Each pattern is fetched once per session; a missing pattern draws nothing rather than an invented line.
+Showcase mode uses its captured fixture for this overlay without a live RTS lookup.
+
+Bus-service exposes deterministic `/api/transit` endpoints for routes, patterns, nearby stops, stop-name search, and direct service between two stops or places.
+Direct-service results name the boarding and drop-off stops and give an approximate straight-line bearing to the boarding stop.
+They are labeled as direct-route coverage, not arrivals, transfers, or walking routes.
+The Gemini copilot uses the companion `/api/buses/network` and `/api/buses/plan` endpoints for route discovery, predictions and stop guidance.
+See [the bus-service API reference](bus-service/README.md#transit-routes-stops-and-direct-service) and [verification](docs/TRANSIT_ROUTES_VERIFICATION.md).
+
 ## Verification
 
 ```sh
@@ -137,6 +151,7 @@ npm run build
 
 Backend tests and setup are in [bus-service/README.md](bus-service/README.md).
 See [checkpoint verification](docs/LIVE_RTS_VERIFICATION.md) for completed checks and remaining physical-device gates.
+See [transit routes verification](docs/TRANSIT_ROUTES_VERIFICATION.md) for the route, stop, and overlay evidence.
 Android uses the shared RTS bus feed and transit HUD with native camera and compass calibration.
 Its shared-module build is checked separately; physical APK acceptance remains pending.
 

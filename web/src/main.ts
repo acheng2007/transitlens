@@ -1,8 +1,9 @@
-import { startDemoFeed } from './demo';
+import { startDemoFeed, demoPattern } from './demo';
 import { createJourneyState, reduceJourney, arrivalLabel } from './journey-state';
 import { haversineKm } from './geo';
 import type { TransitAction } from '../../shared/assistant';
 import { createStreetMap } from './street-map';
+import { createPatternCache, createRouteSelection } from './transit-data';
 import { createMapState, applyMapAction, compassBuses, compassLimitKm } from './map-state';
 import type { MapAction } from './map-state';
 import { DEFAULT_IPD_MM, TRANSIT_SETTINGS as DEFAULT_SETTINGS, PRESETS, detectPreset, getPreset, loadSettings, pxPerMm, saveSettings } from './config';
@@ -65,6 +66,8 @@ let streetMap: ReturnType<typeof createStreetMap> | null = null;
 let mapState = createMapState(5);
 let journeyState = createJourneyState();
 let assistantSource = 'Ready';
+let patterns: ReturnType<typeof createPatternCache> | null = null;
+let routeSelection = createRouteSelection();
 function dispatchMap(action: MapAction) { mapState = applyMapAction(mapState, action); renderOverlay(); }
 
 let busFocus = createBusFocus();
@@ -287,7 +290,9 @@ function frame() {
   const selectedFocusId = busFocus.update(buses, headingDeg, timeMs);
   focusedBusId = selectedFocusId;
   mapState = { ...mapState, center: feedState?.position ?? null, responseCenter: feedState?.responseCenter ?? null, headingDeg };
-  streetMap?.update({ state: mapState, buses: allBuses, focusId: selectedFocusId, halfFov: lastHalfFovDeg, journey: journeyState });
+  const routeId = routeSelection.update(buses.find(b => b.id === selectedFocusId) ?? null, timeMs);
+  const route = routeId ? patterns?.get(routeId, timeMs) ?? null : null;
+  streetMap?.update({ state: mapState, buses: allBuses, focusId: selectedFocusId, halfFov: lastHalfFovDeg, journey: journeyState, route });
   const hud = {
     headingDeg, halfTan, buses: buses,
     status: [feedState?.status ?? '', orientationMessage, orientation?.get()?.northReference === 'magnetic' ? 'Magnetic heading - true-north correction pending' : '', !DEV && headingDeg == null ? 'Compass unavailable - check motion permission' : ''].filter(Boolean).join(' · '),
@@ -438,6 +443,10 @@ async function start() {
       radiusKm: settings.radiusKm ?? 5,
     });
     mapState = createMapState(settings.radiusKm ?? 5);
+    patterns = settings.dataMode === 'demo'
+      ? createPatternCache(async id => ({ pattern: demoPattern(id) }))
+      : createPatternCache();
+    routeSelection = createRouteSelection();
     streetMap = createStreetMap();
     view = createStereoView(stereoEl, stream, settings.viewMode === 'handheld');
     if (DEV && settings.dataMode === 'demo') devHeading = feed.get().buses[0]?.bearingDeg ?? 0;
@@ -506,6 +515,8 @@ function stop() {
   stopCasting();
   streetMap?.stop();
   streetMap = null;
+  patterns?.stop();
+  patterns = null;
   cancelAnimationFrame(rafId);
   clearTimeout(lockTimer);
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
