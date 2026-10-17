@@ -4,12 +4,16 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { mapPoint, mapZoom } from './map-state';
 import type { MapState } from './map-state';
 import type { Bus } from './buses';
+import type { JourneyState } from './journey-state';
+import type { GeoPoint } from '../../shared/journey';
+import type { TransitPattern } from '../../shared/transit';
+import { drawRoutePattern } from './route-overlay';
 
 setWorkerUrl(workerUrl);
 setWorkerCount(1);
 export type MapFrame = { canvas: HTMLCanvasElement; status: string; extentKm: number; northUp: boolean; mode: MapState['mode']; located: boolean };
 type Theme = 'light' | 'dark';
-type Input = { state: MapState; buses: Bus[]; focusId: string | null; halfFov: number; theme?: Theme };
+type Input = { state: MapState; buses: Bus[]; focusId: string | null; halfFov: number; theme?: Theme; journey?: JourneyState; route?: TransitPattern | null };
 const SIZE = 512;
 
 /** Map overlay colors per theme (mirror the HUD palettes in hud.ts). */
@@ -79,7 +83,7 @@ export function createStreetMap() {
   let lastCapture = 0;
   function capture(roads: boolean) {
     if (!input || stopped) return;
-    const { state, buses, focusId, halfFov } = input;
+    const { state, buses, focusId, halfFov, route } = input;
     const theme: Theme = input.theme ?? 'light';
     const c = MAP_COLORS[theme];
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -90,6 +94,36 @@ export function createStreetMap() {
       ctx.strokeStyle = c.fallbackRing; ctx.lineWidth = 1;
       for (const r of [64, 128, 192, 255]) { ctx.beginPath(); ctx.arc(256, 256, r, 0, Math.PI * 2); ctx.stroke(); }
     }
+    const project = (p: GeoPoint): [number, number] => {
+      const point = roads && map ? map.project([p.lon, p.lat]) : null;
+      return point ? [point.x, point.y] : mapPoint(p, state, SIZE);
+    };
+    // Paths are authoritative RTS shapes. No LLM coordinates enter the renderer.
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, SIZE, SIZE); ctx.clip();
+    for (const route of input.journey?.routes ?? []) {
+      ctx.strokeStyle = route.color; ctx.lineWidth = state.mode === 'expanded' ? 5 : 8;
+      ctx.shadowColor = route.color; ctx.shadowBlur = 10; ctx.beginPath();
+      route.shape.forEach((p, i) => { const [x,y] = project(p); if (i) ctx.lineTo(x,y); else ctx.moveTo(x,y); });
+      ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#bbfff1'; ctx.lineWidth = 1.5; ctx.stroke();
+      for (const stop of route.stops) {
+        const [x,y] = project(stop); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+      }
+    }
+    const trip = input.journey?.guidance;
+    if (trip) {
+      for (const [stop, color, name] of [[trip.boardingStop, '#b5ff67', 'BOARD'], [trip.alightingStop, '#ffc94d', 'DESTINATION']] as const) {
+        const [x,y] = project(stop);
+        ctx.fillStyle = color; ctx.strokeStyle = '#08121c'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'center'; ctx.fillText(name,x,y-18);
+      }
+      // Dashed line is explicitly a bearing cue, never a pedestrian route.
+      const [x,y] = project(trip.boardingStop);
+      ctx.setLineDash([7,7]); ctx.strokeStyle='#b5ff6788'; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(256,256); ctx.lineTo(x,y); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.restore();
     if (state.center) {
       if (state.headingDeg !== null) {
         // View cone, fading out with distance.
@@ -99,15 +133,19 @@ export function createStreetMap() {
         const half = halfFov * Math.PI / 180;
         ctx.arc(256, 256, 180, -Math.PI / 2 - half, -Math.PI / 2 + half); ctx.closePath(); ctx.fill();
       }
+      const projectLatLon = (lat: number, lon: number): [number, number] => project({ lat, lon });
+      if (route && !(input.journey?.routes.length)) drawRoutePattern(ctx, route, projectLatLon, state.mode === 'compact');
       const compact = state.mode === 'compact';
       const focused = buses.find(b => b.id === focusId);
       // Selected bus last so its badge sits on top.
       for (const b of [...buses.filter(b => b !== focused), ...(focused ? [focused] : [])]) {
-        const point = roads && map ? map.project([b.lon, b.lat]) : null;
-        const [x, y] = point ? [point.x, point.y] : mapPoint(b, state, SIZE);
+        const [x, y] = project(b);
         if (x < 0 || y < 0 || x > SIZE || y > SIZE) continue;
+        const relevant = !input.journey?.routes.length || input.journey.routes.some(r => r.routeId === b.route);
+        ctx.globalAlpha = relevant || b.id === focusId ? 1 : 0.35;
         drawBusMarker(ctx, x, y, b.route, b === focused, compact, theme);
       }
+      ctx.globalAlpha = 1;
       // You: solid dot with a contrasting ring and an accent halo.
       ctx.fillStyle = 'rgba(183, 217, 208, 0.5)';
       ctx.beginPath(); ctx.arc(256, 256, 20, 0, Math.PI * 2); ctx.fill();

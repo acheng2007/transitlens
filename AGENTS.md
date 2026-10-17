@@ -22,12 +22,18 @@ The current user's instructions take precedence over repository guidance.
 
 ## Current state and immediate scope
 
-TransitLens behavior described below is a target unless a completed milestone demonstrates otherwise.
-An RTS credential smoke test returned routes and live vehicles, but a TransitLens bus service and Gemini transit actions have not been implemented.
-
-Do not infer that documentation work authorizes implementing the application.
-When implementation is requested, follow the roadmap and stop at the requested checkpoint.
-The first migration checkpoint is the Bus model, Gainesville fixture, and bus-focused Cardboard HUD before changing the live data service.
+The web app now supports live RTS buses, Cardboard and a full-screen handheld view.
+The Gemini copilot uses Google's server-side GenAI SDK for voice/text questions, route discovery, highlighting, trip choices and stationary boarding-stop guidance.
+An explicit bus-sign request can send one bounded JPEG camera still to Gemini; ordinary questions do not transmit camera images.
+Browser speech recognition/synthesis remains the speech pipeline, with a seven-second follow-up window and typed fallback.
+The network service retrieves ordered RTS patterns and stop-specific predictions, with caching and a shared request budget.
+Direct-trip results distinguish route coverage, active buses and predictions, and label straight-line stop bearing separately from pedestrian navigation.
+Showcase mode uses ten moving synthetic buses on a captured six-route RTS fixture, with explicitly scripted demo arrival times.
+Live mode never falls back to synthetic vehicles.
+Gemini can operate on either live or demo transit data; without a key, deterministic commands are explicitly labeled local/scripted.
+Physical phone, headset, microphone, outdoor alignment and cast-network acceptance remain pending unless separately evidenced.
+See README.md and docs/GEMINI_VERIFICATION.md for setup, implemented behavior and verification.
+The broader transfer planner and verified walking paths remain outside the current implementation.
 
 ## Non-negotiable experience
 
@@ -120,7 +126,7 @@ Preserve the existing browser speech-recognition and speech-synthesis pipeline i
 The model provider, wake-phrase recognizer, and speech-output provider are separate concerns.
 Replace the inherited xAI-specific remote speech path or disable it in favor of browser speech synthesis; do not send a Gemini key to an xAI endpoint.
 Gemini speech generation can be added separately after the transit action loop works.
-The imported source still uses Gemini/xAI names and configuration until the application migration explicitly changes them.
+The assistant uses transit-only contracts, Gemini and browser speech.
 Do not use an LLM to compute bus bearings, select gaze targets, calculate route reachability, or fabricate route geometry.
 
 The server should supply authoritative route/stop search tools to Gemini.

@@ -9,9 +9,25 @@ The native transit renderer uses the shared bus feed and HUD with native sensor 
 Physical phone, headset, outdoor alignment, and APK packaging remain acceptance gates, as recorded in [verification](LIVE_RTS_VERIFICATION.md).
 Do not mark the physical live-Cardboard gate complete from desktop or mocked tests.
 The subsequent street-map milestone implements MapLibre/OpenFreeMap roads, shared compact/expanded controls, and an independent saved compass-distance limit defaulting to 1 mile.
-Gemini, synthetic buses, transit route overlays, arrivals, navigation, and Mobile AR remain outside this checkpoint.
+The subsequent Gemini slice implements focused-bus Q&A and validated map mode/zoom controls with browser speech and a typed fallback.
+Synthetic buses in the main app, transit route overlays, arrivals, navigation, and Mobile AR remain pending.
+Route discovery, route highlighting and boarding-stop guidance are still planned.
+See [Gemini verification](GEMINI_VERIFICATION.md).
 Physical iPhone acceptance for the new map remains pending.
 See [street-map verification](STREET_MAP_VERIFICATION.md).
+The following transit-data milestone adds RTS route patterns, derived stops, deterministic route and stop queries, direct-service discovery, and the focused bus's route on the minimap.
+This completes milestone 4a's first grounded-tools items; Gemini integration, highlighted-route actions, and guidance remain open.
+See [transit routes verification](TRANSIT_ROUTES_VERIFICATION.md).
+
+## Expanded hackathon checkpoint
+
+The current implementation now includes a Gemini voice/text copilot, direct-route discovery from ordered RTS patterns, route highlighting, available stop-specific arrival predictions and approximate stationary-stop guidance.
+A Handheld renderer shares the Cardboard state, and explicit showcase mode has ten synthetic moving buses on captured RTS geometry.
+An explicit sign-reading command can attach a single small camera still to Gemini.
+Conversation includes a bounded follow-up listening window; typed questions remain available.
+The launch screen and showcase flow are described in [SHOWCASE.md](SHOWCASE.md), with evidence and limitations in [GEMINI_VERIFICATION.md](GEMINI_VERIFICATION.md).
+Earlier deferred-feature statements below describe the initial checkpoints and are superseded for these implemented features.
+Gemini live-provider and physical-device acceptance remain pending; transfer planning and verified pedestrian paths remain future work.
 
 For current parallel assignments, file coordination, dependencies, and first tasks, use [the parallel work plan](PARALLEL_WORK.md).
 The remaining roadmap preserves the broader product direction and earlier milestone checklists as historical planning, rather than claiming each item is implemented.
@@ -195,10 +211,10 @@ UI layout should still receive pixel-level visual review.
 This is core product work under the [PRD product update](PRD.md#product-update-interactive-gemini-transit-copilot), following the geographic Cardboard foundation.
 Preserve wake-phrase interaction, speech capture, voice state feedback, speech output, and browser speech fallback; migrate the activation phrase to "Hey Gemini".
 
-- [ ] Replace the inherited xAI chat configuration with server-side `GEMINI_API_KEY` and a configurable Gemini model using Google's supported SDK.
+- [x] Replace the inherited xAI chat configuration with server-side `GEMINI_API_KEY` and a configurable Gemini model using Google's supported SDK.
 - [ ] Verify function-calling and structured-output support for the selected model, then test the typed transit tool loop.
-- [ ] Remove reliance on xAI remote speech output; initially use browser speech synthesis, keeping any future Gemini speech integration separate.
-- [ ] Update wake matching, assistant labels, prompts, health metadata, environment examples, and voice development fixtures consistently.
+- [x] Remove reliance on xAI remote speech output; initially use browser speech synthesis, keeping any future Gemini speech integration separate.
+- [x] Update wake matching, assistant labels, prompts, health metadata, environment examples, and voice development fixtures consistently.
 
 ### Grounded transit tools
 
@@ -206,29 +222,29 @@ Preserve wake-phrase interaction, speech capture, voice state feedback, speech o
 - [ ] Implement deterministic nearby-stop, route-detail, and destination-serving-route queries with stable IDs and freshness/provenance.
 - [ ] Resolve named places to candidate destinations and nearby stops; ask a spoken clarification when ambiguous.
 - [ ] Define direct-service matching and explicitly distinguish service coverage, current active vehicles, and predictions.
-- [ ] Give Gemini typed transit tools rather than expecting it to infer service from route names or destination strings.
-- [ ] Keep missing prediction or pedestrian-routing data explicit; do not invent arrivals or walkable paths.
+- [x] Give Gemini typed transit tools rather than expecting it to infer service from route names or destination strings.
+- [x] Keep missing prediction or pedestrian-routing data explicit; do not invent arrivals or walkable paths.
 
 ### Shared map state and actions
 
 - [ ] Add shared compact/expanded map mode, bounded zoom, highlighted routes, selected stop/destination, and guidance state.
-- [ ] Keep the compact map at the bottom while Gemini listens, thinks, and speaks; arrange subtitles to avoid hiding it.
+- [x] Keep the compact map at the bottom while Gemini listens, thinks, and speaks; arrange subtitles to avoid hiding it.
 - [ ] Render verified route geometry and distinguish bus, stop, destination, and user markers.
-- [ ] Define and validate typed map actions in the voice response; apply them through the application state layer.
-- [ ] Preserve identical action state across both eyes and casting, with no state mutation inside drawing.
-- [ ] Handle request identity, cancellation, stale responses, duplicate retries, unsupported actions, and failure feedback.
+- [x] Define and validate typed map actions in the voice response; apply them through the application state layer.
+- [x] Preserve identical action state across both eyes and casting, with no state mutation inside drawing.
+- [x] Handle request identity, cancellation, stale responses, duplicate retries, unsupported actions, and failure feedback.
 - [ ] Make "close the map" restore compact mode while retaining selections, and "cancel guidance" clear guidance.
 
 ### Voice-driven discovery and guidance
 
 - [ ] Use focused bus, selected route, destination, stop, and current map state as explicit conversation context.
 - [ ] Support "What bus is that?", "Show routes to Reitz Union", "Enlarge the minimap", "Highlight route 38", and "Guide me to a stop for that route."
-- [ ] Return a brief spoken answer plus validated UI actions; do not claim a successful visual change when action application failed.
+- [x] Return a brief spoken answer plus validated UI actions; do not claim a successful visual change when action application failed.
 - [ ] Select a stationary boarding stop with the right route/direction instead of directing the user toward a moving bus.
 - [ ] Use verified pedestrian routing when available; otherwise label stop-bearing guidance as approximate direction and distance.
 - [ ] Keep the headset experience fully usable while stationary; verify walking guidance through handheld mode or a suitable separate setup.
 - [ ] Add synthetic route shapes, stops, destinations, and clearly marked scripted command scenarios to the demo.
-- [ ] Keep deterministic typed-transcript testing independent of browser speech recognition and cloud Gemini availability.
+- [x] Keep deterministic typed-transcript testing independent of browser speech recognition and cloud Gemini availability.
 
 **Gate:** verify speech/transcript → intent → transit tool → validated action → visible map change → accurate spoken result.
 Cover ambiguous destinations, multiple route directions, no service, stale data, unknown IDs, invalid actions, delayed replies, repeated commands, cloud failure, and microphone denial.

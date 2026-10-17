@@ -12,6 +12,7 @@ let preferredVoice: SpeechSynthesisVoice | null = null;
 // Android Chrome only allows play() without a gesture on an element that already played once.
 let audioEl: HTMLAudioElement | null = null;
 let currentUrl: string | null = null;
+let finishSpeech: (() => void) | null = null;
 const SILENT_WAV =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
 
@@ -105,17 +106,20 @@ export function speak(text: string, lang = 'en-US'): Promise<void> {
       if (done) return;
       done = true;
       clearTimeout(guard);
+      if (finishSpeech === finish) finishSpeech = null;
       resolve();
     };
     u.onend = finish;
     u.onerror = finish;
     // Chrome sometimes never fires onend; don't let the state machine hang.
     const guard = window.setTimeout(finish, 1500 + text.length * 90);
+    finishSpeech = finish;
     speechSynthesis.speak(u);
   });
 }
 
 export function stopSpeaking(): void {
+  finishSpeech?.();
   if (audioEl && !audioEl.paused) {
     try {
       audioEl.pause();

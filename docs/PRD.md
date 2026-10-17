@@ -12,9 +12,21 @@ The latest user instruction authorizes a live-first web migration for iPhone Saf
 This supersedes the earlier requirement to implement an offline bus demo first.
 The current bounded scope is bus-service, normalized live vehicles, route-first compass markers, dwell cards, persistent minimap, casting, permission recovery, and iPhone sensor handling.
 The street-map milestone adds OpenFreeMap roads, compact/expanded shared map controls, and a saved independent 1-mile compass filter.
-Gemini, synthetic buses, transit route overlays, arrivals, navigation, and Mobile AR are deferred.
+The subsequent Gemini slice adds focused-bus Q&A, browser speech, typed questions, bounded conversation and validated compact/expanded map and zoom controls.
+See [Gemini verification](GEMINI_VERIFICATION.md).
+A later transit-data milestone adds RTS routes, stops, direct-service queries, and the focused bus's route on the minimap; see [its verification](TRANSIT_ROUTES_VERIFICATION.md).
 The longer-term product requirements below remain planned.
 See [verification evidence](LIVE_RTS_VERIFICATION.md) before claiming hardware support or geographic alignment.
+
+## Expanded hackathon checkpoint
+
+The current implementation now includes a Gemini voice/text copilot, direct-route discovery from ordered RTS patterns, route highlighting, available stop-specific arrival predictions and approximate stationary-stop guidance.
+A Handheld renderer shares the Cardboard state, and explicit showcase mode has ten synthetic moving buses on captured RTS geometry.
+An explicit sign-reading command can attach a single small camera still to Gemini.
+Conversation includes a bounded follow-up listening window; typed questions remain available.
+The launch screen and showcase flow are described in [SHOWCASE.md](SHOWCASE.md), with evidence and limitations in [GEMINI_VERIFICATION.md](GEMINI_VERIFICATION.md).
+Earlier deferred-feature statements below describe the initial checkpoints and are superseded for these implemented features.
+Gemini live-provider and physical-device acceptance remain pending; transfer planning and verified pedestrian paths remain future work.
 
 ## Product update: interactive Gemini transit copilot
 

@@ -53,7 +53,7 @@ export type Settings = {
    */
   dataMode: DataMode;
   viewMode: ViewMode;
-  /** "Hey Grok" voice assistant (inherited module in src/voice/). */
+  /** "Hey Gemini" voice assistant (inherited module in src/voice/). */
   voiceEnabled: boolean;
   /** Search radius in kilometers; null uses the data provider default. */
   radiusKm: number | null;
@@ -70,8 +70,9 @@ export type DataMode = 'demo' | 'live';
 
 /**
  * 'ar' = Cardboard camera passthrough (two eyes); 'mobile' = one full-screen camera view held in the hand;
+ * 'handheld' is accepted as an alias of mobile for older settings.
  */
-export type ViewMode = 'ar' | 'mobile';
+export type ViewMode = 'ar' | 'mobile' | 'handheld';
 
 export const DEFAULT_SETTINGS: Settings = {
   presetId: 'generic',
@@ -89,7 +90,7 @@ export const DEFAULT_SETTINGS: Settings = {
   castEnabled: false,
 };
 
-export const TRANSIT_SETTINGS: Settings = { ...DEFAULT_SETTINGS, dataMode: 'live', viewMode: 'mobile', voiceEnabled: false, radiusKm: 5, compassDistanceMiles: 1 };
+export const TRANSIT_SETTINGS: Settings = { ...DEFAULT_SETTINGS, dataMode: 'live', viewMode: 'mobile', voiceEnabled: true, radiusKm: 5, compassDistanceMiles: 1 };
 
 const STORAGE_KEY = 'transitlens-settings-v1';
 
