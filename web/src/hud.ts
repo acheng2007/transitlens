@@ -137,7 +137,7 @@ export const FOCUS_HALF_DEG = 7.5;
 // Tracks when the current focus bus became focused, for the pop-up animation.
 
 /** Subtitle area for voice: bottom edge of the answer panel (fraction of eye height). */
-const VOICE_Y = 0.74;
+const VOICE_Y = 0.68;
 /** How long the idle "Say Hey Gemini" hint stays after start (ms). */
 const HINT_MS = 15000;
 export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState<Bus>): HudResult<Bus> {
@@ -149,7 +149,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: 
   // Transit map frames remain independent of compass filtering and voice status.
   if (s.mapFrame) {
     const selected = s.selectedFocusId ? (s.buses.find((p) => p.id === s.selectedFocusId) as Bus | undefined) ?? null : null;
-    const withVoice = !!s.journey?.plan || !!s.journey?.guidance || (!!s.voice && (s.voice.state !== 'idle' || !!s.voice.answer || !!s.voice.error));
+    const withVoice = voicePanelsActive(s.journey, s.voice);
     drawStreetMap(ctx, w, h, s.mapFrame, selected && 'route' in selected ? selected : null, withVoice);
   }
   else if (s.headingDeg != null) {
@@ -157,47 +157,138 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: 
   }
   if (s.selectedFocusId !== undefined) drawStatus(ctx, w, h, s.status);
   if (s.journey) drawJourney(ctx, w, h, s);
-  if (s.voice) drawVoice(ctx, w, h, s.voice, s.timeMs);
+  if (s.voice) drawVoice(ctx, w, h, s.voice, s.timeMs, !!s.journey?.plan || !!s.journey?.guidance);
   return result;
 }
 
-/** The trip result is shared across every eye and casting. */
+/** Rounded surface panel in the right-hand column (voice answers, trip options, guidance). */
+function panel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  ctx.save();
+  ctx.shadowColor = T.cardShadow;
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetY = 3;
+  roundRect(ctx, x, y, w, h, fs(14));
+  ctx.fillStyle = T.surface;
+  ctx.fill();
+  ctx.restore();
+}
+
+/** Text line inside a panel (no camera shadow: panels give the contrast). */
+function panelText(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, size: number, color: string, weight = 600, align: CanvasTextAlign = 'left') {
+  ctx.save();
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  ctx.fillStyle = color;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+/** Small pill with a colored dot (Gemini source / demo label). */
+function sourcePill(ctx: CanvasRenderingContext2D, cx: number, cy: number, text: string, dot: string) {
+  ctx.save();
+  ctx.font = `700 ${fs(8)}px ${FONT}`;
+  const tw = ctx.measureText(text).width;
+  const pw = tw + fs(22);
+  const ph = fs(8) + 9;
+  ctx.shadowColor = T.cardShadow;
+  ctx.shadowBlur = 6;
+  roundRect(ctx, cx - pw / 2, cy - ph / 2, pw, ph, ph / 2);
+  ctx.fillStyle = T.surface;
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = dot;
+  ctx.beginPath();
+  ctx.arc(cx - pw / 2 + fs(8), cy, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = T.text;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx - pw / 2 + fs(14), cy + 0.5);
+  ctx.restore();
+}
+
+/**
+ * True while trip or voice panels occupy the right-hand column; the expanded map then shrinks to the
+ * left (drawStreetMap) and the overlay moves the map buttons above it (main.ts `with-voice`).
+ */
+export function voicePanelsActive(journey: JourneyState | null | undefined, voice: VoiceHud | null | undefined): boolean {
+  return !!journey?.plan || !!journey?.guidance || (!!voice && (voice.state !== 'idle' || !!voice.answer || !!voice.error));
+}
+
+/** The trip result is shared across every eye and casting: a themed panel in the right-hand column. */
 function drawJourney(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState<Bus>) {
   const state = s.journey!;
   const cx = w * 0.71;
+  const pw = Math.min(w * 0.42, fs(230));
+  const px = cx - pw / 2;
+  const pad = fs(10);
   if (state.guidance) {
     const j = state.guidance;
-    label(ctx,cx,h*0.38,`BOARD ROUTE ${j.routeId}`,fs(15),'#b5ff67','center',true);
-    ctx.font=`${fs(11)}px ${FONT}`;
-    const names=wrapLines(ctx,j.boardingStop.name,w*0.39).slice(0,2);
-    names.forEach((line,i)=>label(ctx,cx,h*0.41+i*fs(14),line,fs(11),COLORS.text,'center'));
-    label(ctx,cx,h*0.48,arrivalLabel(j),fs(11),'#ffc94d','center');
+    ctx.font = `600 ${fs(10.5)}px ${FONT}`;
+    const names = wrapLines(ctx, j.boardingStop.name, pw - pad * 2).slice(0, 2);
+    const rows = 3 + names.length + (s.position ? 2 : 0);
+    const ph = pad * 2 + rows * fs(15);
+    const py = h * 0.36;
+    panel(ctx, px, py, pw, ph);
+    let y = py + pad + fs(7);
+    panelText(ctx, px + pad, y, 'BOARD', fs(8), T.muted, 700);
+    y += fs(15);
+    panelText(ctx, px + pad, y, `Route ${j.routeId}`, fs(14), T.text, 800);
+    y += fs(15);
+    names.forEach((line) => { panelText(ctx, px + pad, y, line, fs(10.5), T.text, 600); y += fs(15); });
+    panelText(ctx, px + pad, y, arrivalLabel(j), fs(10), T.warnText, 650);
     if (s.position) {
-      const distance=haversineKm(s.position.lat,s.position.lon,j.boardingStop.lat,j.boardingStop.lon);
-      const bearing=bearingDeg(s.position.lat,s.position.lon,j.boardingStop.lat,j.boardingStop.lon);
-      const off=s.headingDeg===null?null:signedDiffDeg(bearing,s.headingDeg);
-      const direction=off===null ? `${Math.round(bearing)}° true` : Math.abs(off)<8?'AHEAD':off<0?'TURN LEFT':'TURN RIGHT';
-      label(ctx,cx,h*0.52,`${Math.round(distance*1000)} m · ${direction}`,fs(14),'#b5ff67','center',true);
-      label(ctx,cx,h*0.55,'STOP BEARING · NOT A WALKING PATH',fs(7),COLORS.text,'center');
-      // Bearing diamond is constrained to the compass, leaving the central view clear.
-      if (off!==null) {
-        const x=Math.max(w*0.12,Math.min(w*0.88,projectX(off,s.halfTan,w)??(off<0?0:w)));
-        const y=h*0.18;
-        ctx.save();ctx.translate(x,y);ctx.rotate(Math.PI/4);ctx.fillStyle='#b5ff67';
-        ctx.shadowColor='#b5ff67';ctx.shadowBlur=12;ctx.fillRect(-5,-5,10,10);ctx.restore();
-        label(ctx,x,y-fs(15),'BOARD',fs(8),'#b5ff67','center',true);
+      const distance = haversineKm(s.position.lat, s.position.lon, j.boardingStop.lat, j.boardingStop.lon);
+      const bearing = bearingDeg(s.position.lat, s.position.lon, j.boardingStop.lat, j.boardingStop.lon);
+      const off = s.headingDeg === null ? null : signedDiffDeg(bearing, s.headingDeg);
+      const direction = off === null ? `${Math.round(bearing)}° true` : Math.abs(off) < 8 ? 'Ahead' : off < 0 ? 'Turn left' : 'Turn right';
+      y += fs(15);
+      panelText(ctx, px + pad, y, `${Math.round(distance * 1000)} m · ${direction}`, fs(12), T.okText, 800);
+      y += fs(15);
+      panelText(ctx, px + pad, y, 'Stop bearing · not a walking path', fs(8), T.muted, 600);
+      // Bearing diamond rides the compass, leaving the central view clear.
+      if (off !== null) {
+        const x = Math.max(w * 0.12, Math.min(w * 0.88, projectX(off, s.halfTan, w) ?? (off < 0 ? 0 : w)));
+        const dy = h * 0.18;
+        ctx.save();
+        ctx.translate(x, dy);
+        ctx.rotate(Math.PI / 4);
+        ctx.shadowColor = T.accentGlow;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = T.accent;
+        ctx.fillRect(-5, -5, 10, 10);
+        ctx.shadowColor = 'transparent';
+        ctx.strokeStyle = T.onAccent;
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(-5, -5, 10, 10);
+        ctx.restore();
+        sourcePill(ctx, x, dy - fs(16), 'BOARD', T.accent);
       }
     }
   } else if (state.plan) {
-    const p=state.plan;
-    label(ctx,cx,h*0.38,p.status==='ambiguous'?'WHICH DESTINATION?':p.options.length?`${p.options.length} DIRECT OPTIONS`:'NO DIRECT TRIP',fs(12),'#b5ff67','center',true);
-    p.options.slice(0,3).forEach((j,i)=>{
-      label(ctx,cx,h*(0.43+i*0.045),`${i+1} · ROUTE ${j.routeId} · ${j.rideStops} stops`,fs(11),j.color,'center',true);
+    const p = state.plan;
+    const title = p.status === 'ambiguous' ? 'Which destination?' : p.options.length ? `${p.options.length} direct option${p.options.length > 1 ? 's' : ''}` : 'No direct trip';
+    const opts = p.options.slice(0, 3);
+    const hint = p.status === 'ambiguous' ? 'Name a stop to narrow the search' : opts.length ? 'Say “take the first option”' : '';
+    const ph = pad * 2 + fs(16) + opts.length * fs(16) + (hint ? fs(15) : 0);
+    const py = h * 0.36;
+    panel(ctx, px, py, pw, ph);
+    let y = py + pad + fs(8);
+    panelText(ctx, px + pad, y, title, fs(12.5), T.text, 800);
+    opts.forEach((j, i) => {
+      y += fs(16);
+      ctx.save();
+      ctx.fillStyle = j.color;
+      ctx.beginPath();
+      ctx.arc(px + pad + 3, y, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      panelText(ctx, px + pad + fs(11), y, `${i + 1} · Route ${j.routeId} · ${j.rideStops} stops`, fs(10.5), T.text, 650);
     });
-    if (p.options.length) label(ctx,cx,h*0.57,'Say “take the first option”',fs(9),COLORS.text,'center');
-    if (p.status==='ambiguous') label(ctx,cx,h*0.44,'Name a stop to narrow the search',fs(9),COLORS.text,'center');
+    if (hint) panelText(ctx, px + pad, y + fs(15), hint, fs(9), T.muted, 600);
   }
-  if (s.assistantSource) label(ctx,w/2,h*0.12,s.assistantSource.toUpperCase(),fs(8),s.demo?'#ffc94d':'#81d9ed','center');
+  if (s.assistantSource) sourcePill(ctx, cx, h * 0.33, s.assistantSource.toUpperCase(), s.demo ? T.warning : T.live);
 }
 
 /** Radar center (fractions of eye width/height) and radius (fraction of eye width). Kept inward: lens edges blur. */
@@ -351,53 +442,54 @@ function drawBuses(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudSt
 
 let voiceStartMs: number | null = null;
 
-/** Voice subtitles: status pill, the question, and the answer, stacked up from VOICE_Y. */
-function drawVoice(ctx: CanvasRenderingContext2D, w: number, h: number, v: VoiceHud, timeMs: number) {
+/** Voice subtitles in the right-hand column: status pill, the question, and the answer, stacked up from VOICE_Y. */
+function drawVoice(ctx: CanvasRenderingContext2D, w: number, h: number, v: VoiceHud, timeMs: number, compact = false) {
   voiceStartMs ??= timeMs;
-  const maxW = w * 0.40;
+  // A trip panel already fills the column: show only the status pill (answers are still spoken).
+  if (compact) v = { ...v, answer: null, transcript: null };
+  const maxW = Math.min(w * 0.42, fs(240));
   const cx = w * 0.71;
   let bottom = h * VOICE_Y;
 
   if (v.error) {
-    ctx.font = `${fs(10)}px ${FONT}`;
-    const errors = wrapLines(ctx, v.error, maxW).slice(0, 2);
-    errors.forEach(line => { label(ctx, cx, bottom, line, fs(10), '#ff8a80', 'center'); bottom -= fs(14); });
+    ctx.font = `600 ${fs(9.5)}px ${FONT}`;
+    const errors = wrapLines(ctx, v.error, maxW - fs(20)).slice(0, 2);
+    const lineH = fs(9.5) + 4;
+    const pw = Math.min(maxW, Math.max(...errors.map((l) => ctx.measureText(l).width)) + fs(20));
+    const ph = errors.length * lineH + 8;
+    panel(ctx, cx - pw / 2, bottom - ph, pw, ph);
+    errors.forEach((l, i) => panelText(ctx, cx, bottom - ph + 4 + lineH * (i + 0.5), l, fs(9.5), T.warnText, 650, 'center'));
+    bottom -= ph + fs(6);
   }
 
   if (v.answer) {
-    ctx.save();
-    ctx.font = `500 ${fs(12)}px ${FONT}`;
-    const lines = wrapLines(ctx, v.answer, maxW - 16).slice(0, 4);
-    const lineH = fs(12) + 4;
-    const panelW = Math.min(maxW, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16);
-    const panelH = lines.length * lineH + 10;
-    const x = cx - panelW / 2;
-    const y = bottom - panelH;
-    ctx.fillStyle = COLORS.panel;
-    roundRect(ctx, x, y, panelW, panelH, 6);
-    ctx.fill();
-    ctx.fillStyle = COLORS.text;
-    ctx.textAlign = 'left';
-    lines.forEach((l, i) => ctx.fillText(l, x + 8, y + 5 + lineH * (i + 0.5)));
-    ctx.restore();
-    bottom = y - fs(10);
+    ctx.font = `500 ${fs(11.5)}px ${FONT}`;
+    const lines = wrapLines(ctx, v.answer, maxW - fs(20)).slice(0, 4);
+    const lineH = fs(11.5) + 4;
+    const pw = Math.min(maxW, Math.max(...lines.map((l) => ctx.measureText(l).width)) + fs(20));
+    const ph = lines.length * lineH + fs(14);
+    const x = cx - pw / 2;
+    const y = bottom - ph;
+    panel(ctx, x, y, pw, ph);
+    lines.forEach((l, i) => panelText(ctx, x + fs(10), y + fs(7) + lineH * (i + 0.5), l, fs(11.5), T.text, 500));
+    bottom = y - fs(8);
   }
 
   if (v.transcript && (v.answer || v.state === 'thinking')) {
     ctx.save();
-    ctx.font = `italic 500 ${fs(11)}px ${FONT}`;
+    ctx.font = `italic 500 ${fs(10.5)}px ${FONT}`;
     const q = wrapLines(ctx, `“${v.transcript}”`, maxW)[0];
     ctx.restore();
-    label(ctx, cx, bottom, q, fs(11), 'rgba(255,255,255,0.75)', 'center');
+    label(ctx, cx, bottom, q, fs(10.5), T.lineDim, 'center');
     bottom -= fs(18);
   }
 
   const pulse = 0.5 + 0.5 * Math.sin(timeMs / 180);
-  if (v.state === 'listening') pill(ctx, cx, bottom, 'Listening…', `rgba(255, 82, 82, ${0.5 + 0.5 * pulse})`);
-  else if (v.state === 'thinking') pill(ctx, cx, bottom, `Thinking${'.'.repeat(1 + (Math.floor(timeMs / 300) % 3))}`, COLORS.hud);
-  else if (v.state === 'speaking') pill(ctx, cx, bottom, 'Gemini', COLORS.focus);
+  if (v.state === 'listening') pill(ctx, cx, bottom, 'Listening…', `rgba(214, 69, 61, ${0.5 + 0.5 * pulse})`);
+  else if (v.state === 'thinking') pill(ctx, cx, bottom, `Thinking${'.'.repeat(1 + (Math.floor(timeMs / 300) % 3))}`, T.accent);
+  else if (v.state === 'speaking') pill(ctx, cx, bottom, 'Gemini', T.live);
   else if (!v.answer && !v.error && timeMs - voiceStartMs < HINT_MS) {
-    label(ctx, cx, bottom, v.wakeEnabled === false ? 'Tap Ask Gemini to type' : 'Say “Hey Gemini…”', fs(10), 'rgba(255,255,255,0.6)', 'center');
+    pill(ctx, cx, bottom, v.wakeEnabled === false ? 'Tap Ask to type' : 'Say “Hey Gemini…”', T.live);
   }
 }
 
@@ -408,14 +500,17 @@ function pill(ctx: CanvasRenderingContext2D, cx: number, cy: number, text: strin
   const tw = ctx.measureText(text).width;
   const pw = tw + 26;
   const ph = fs(11) + 8;
-  ctx.fillStyle = COLORS.panel;
+  ctx.shadowColor = T.cardShadow;
+  ctx.shadowBlur = 6;
   roundRect(ctx, cx - pw / 2, cy - ph / 2, pw, ph, ph / 2);
+  ctx.fillStyle = T.surface;
   ctx.fill();
+  ctx.shadowColor = 'transparent';
   ctx.fillStyle = dot;
   ctx.beginPath();
   ctx.arc(cx - pw / 2 + 10, cy, 4, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = COLORS.text;
+  ctx.fillStyle = T.text;
   ctx.textAlign = 'left';
   ctx.fillText(text, cx - pw / 2 + 18, cy);
   ctx.restore();

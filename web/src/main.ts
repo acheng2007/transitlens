@@ -10,7 +10,7 @@ import { DEFAULT_IPD_MM, TRANSIT_SETTINGS as DEFAULT_SETTINGS, PRESETS, detectPr
 import type { Settings, ThemeChoice } from './config';
 import { describeStream, getZoom, getZoomRange, listCameras, setZoom, startCamera } from './camera';
 import { halfFovDeg, normalizeDeg, visibleHalfTan } from './geo';
-import { drawHud } from './hud';
+import { drawHud, voicePanelsActive } from './hud';
 import type { VoiceHud } from './hud';
 import { startVoice } from './voice';
 import type { VoiceHandle } from './voice';
@@ -402,6 +402,7 @@ function frame() {
   };
   // Selection is already resolved. Every renderer receives the same state.
   for (const eye of view.eyes) drawHud(eye.ctx, width, height, hud);
+  if ((mapState.mode === 'expanded' && voicePanelsActive(journeyState, voiceHud)) !== lastWithVoice) renderOverlay();
 
   if (cast) {
     // The cast frame has its own aspect, so its visible FOV differs from an eye's.
@@ -452,6 +453,9 @@ function stopCasting() {
 }
 
 /** DOM overlay: crosshair, calibration toast, errors, debug line. Redrawn on events, not per frame. */
+/** Last overlay layout for the map buttons, re-rendered when trip/voice panels appear or clear. */
+let lastWithVoice = false;
+
 function renderOverlay() {
   if (!view) return;
   let debug = '';
@@ -474,10 +478,14 @@ function renderOverlay() {
   const expanded = mapState.mode === 'expanded';
   const icon = (d: string) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
   const toggleIcon = expanded ? icon('M6 6l12 12M18 6L6 18') : icon('M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5');
-  const controls = `<div class="map-controls${expanded ? ' is-expanded' : ''}"><button data-listen class="voice-trigger" data-state="${voiceHud.state}"><span class="voice-dot"></span>${voiceHud.state === 'idle' ? 'Hey Gemini' : voiceHud.state}</button><button data-assistant>Ask</button><button data-map="toggle" aria-pressed="${expanded}" aria-label="${expanded ? 'Close map' : 'Open map'}">${toggleIcon}</button><button data-map="in" aria-label="Zoom map in">${icon('M12 5v14M5 12h14')}</button><button data-map="out" aria-label="Zoom map out">${icon('M5 12h14')}</button></div>`;
+  // Voice (tap to talk + typed Ask) sits top-right; the map keeps its own three round buttons.
+  const voiceControls = `<div class="voice-controls"><button data-listen class="voice-trigger" data-state="${voiceHud.state}" aria-label="Talk to Gemini"><span class="voice-dot"></span>${voiceHud.state === 'idle' ? 'Hey Gemini' : voiceHud.state}</button><button data-assistant aria-label="Ask Gemini">${icon('M5 18l-1.5 3.5L8 19.5c1.2.4 2.6.6 4 .6 4.97 0 9-3.36 9-7.5S16.97 5 12 5 3 8.36 3 12.5c0 2.1 1 4 2.6 5.4z')}</button></div>`;
+  const withVoice = expanded && voicePanelsActive(journeyState, voiceHud);
+  lastWithVoice = withVoice;
+  const controls = `<div class="map-controls${expanded ? ' is-expanded' : ''}${withVoice ? ' with-voice' : ''}"><button data-map="toggle" aria-pressed="${expanded}" aria-label="${expanded ? 'Close map' : 'Open map'}">${toggleIcon}</button><button data-map="in" aria-label="Zoom map in">${icon('M12 5v14M5 12h14')}</button><button data-map="out" aria-label="Zoom map out">${icon('M5 12h14')}</button></div>`;
   const credits = '<div class="map-credits" data-map-credit><a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>';
-  const badge = `<div class="session-badge">${settings.dataMode === 'demo' ? (CAMERA_OFF ? 'DEMO · SYNTHETIC VEHICLES · NO CAMERA' : 'DEMO · SYNTHETIC VEHICLES') : 'LIVE RTS'} <span>TRANSITLENS</span></div>`;
-  const html = `${badge}${credits}${mapState.mode === 'compact' ? '<div class="crosshair"></div>' : ''}${controls}${error}${resume}${close}${calib}${toastHtml}${debug}`;
+  const badge = `<div class="session-badge" data-mode="${settings.dataMode === 'demo' ? 'demo' : 'live'}">${settings.dataMode === 'demo' ? (CAMERA_OFF ? 'DEMO · SYNTHETIC · NO CAMERA' : 'DEMO · SYNTHETIC') : 'LIVE RTS'}</div>`;
+  const html = `${badge}${voiceControls}${credits}${mapState.mode === 'compact' ? '<div class="crosshair"></div>' : ''}${controls}${error}${resume}${close}${calib}${toastHtml}${debug}`;
   for (const eye of view.eyes) eye.overlay.innerHTML = html;
 }
 
