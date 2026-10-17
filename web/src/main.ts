@@ -10,8 +10,10 @@ import { requestOrientationPermission, startOrientation } from './orientation';
 import type { OrientationTracker } from './orientation';
 import { startBusFeed, watchPosition, REITZ_CENTER, createBusFocus } from './buses';
 import type { BusFeed } from './buses';
-import { createStereoView } from './stereo';
-import type { StereoView } from './stereo';
+import { createMonoView, createStereoView } from './stereo';
+import type { View } from './stereo';
+import { showPhoneLink } from './phone-link';
+import { startHome } from './home';
 import { renderPermissions } from './permissions';
 import { createCastCompositor } from './cast/compositor';
 import type { CastCompositor } from './cast/compositor';
@@ -39,6 +41,47 @@ const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
 const startStatus = document.getElementById('start-status')!;
 const stereoEl = document.getElementById('stereo')!;
 const permList = document.getElementById('perm-list')!;
+const modeCards = [...document.querySelectorAll<HTMLElement>('[data-mode-view]')];
+const settingsEl = document.getElementById('settings')!;
+
+/** Home screen feed (nearby cards + live indicator); stopped while the AR view runs. */
+let home: ReturnType<typeof startHome> | null = null;
+function restartHome() {
+  home?.stop();
+  home = startHome({ dev: DEV, radiusKm: () => settings.radiusKm ?? 5 });
+}
+
+function openSettings() {
+  settingsEl.hidden = false;
+  void renderPermissions(permList);
+}
+function closeSettings() {
+  if (settingsEl.hidden) return;
+  settingsEl.hidden = true;
+  const radius = settings.radiusKm;
+  readSettingsFromForm();
+  if (settings.radiusKm !== radius) restartHome();
+}
+document.getElementById('settings-open')!.addEventListener('click', openSettings);
+document.getElementById('settings-done')!.addEventListener('click', closeSettings);
+
+/** Phone view (one full-screen image, no headset) vs Cardboard (two eyes). */
+const isMobileView = () => settings.viewMode === 'mobile';
+
+/** Mirrors the hidden view select into the mode cards, and hides Cardboard-only settings in phone view. */
+function syncModeCards() {
+  for (const card of modeCards) {
+    const on = card.dataset.modeView === viewSelect.value;
+    card.classList.toggle('is-selected', on);
+    card.setAttribute('aria-checked', String(on));
+  }
+  for (const el of document.querySelectorAll<HTMLElement>('.cardboard-only')) el.hidden = viewSelect.value !== 'ar';
+}
+for (const card of modeCards) {
+  const pick = () => { viewSelect.value = card.dataset.modeView!; syncModeCards(); };
+  card.addEventListener('click', pick);
+  card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+}
 
 /** Live readouts and filled tracks for the start-screen sliders. */
 const SLIDERS: [HTMLInputElement, string, (v: number) => string][] = [
@@ -55,7 +98,7 @@ function syncSliders() {
 }
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
-let view: StereoView | null = null;
+let view: View | null = null;
 let stream: MediaStream | null = null;
 let orientation: OrientationTracker | null = null;
 let feed: BusFeed | null = null;
@@ -89,6 +132,9 @@ let toastTimer = 0;
 // Re-locks after LOCK_AFTER_MS without a tap (except in 'info', which stays up).
 type Mode = 'zoom' | 'tilt' | 'spacing' | 'shift' | 'size' | 'fov' | 'info';
 const MODES: Mode[] = ['zoom', 'tilt', 'spacing', 'shift', 'size', 'fov', 'info'];
+/** Phone view has no lenses: only camera zoom, FOV and info apply. */
+const MOBILE_MODES: Mode[] = ['zoom', 'fov', 'info'];
+const modes = () => (isMobileView() ? MOBILE_MODES : MODES);
 let mode: Mode | null = null;
 let lockTimer = 0;
 let lastMiddleTap = 0;
@@ -99,6 +145,7 @@ let longPressTimer = 0;
 let longPressFired = false;
 
 async function initStartScreen() {
+  void showPhoneLink();
   for (const p of PRESETS) presetSelect.add(new Option(p.label, p.id));
   const saved = loadSettings('transitlens-settings-v1');
   settings = {
@@ -109,7 +156,8 @@ async function initStartScreen() {
   presetSelect.value = settings.presetId;
   ipdInput.value = String(settings.ipdMm);
   dataSelect.value = 'live';
-  viewSelect.value = settings.viewMode;
+  viewSelect.value = settings.viewMode === 'ar' ? 'ar' : 'mobile';
+  syncModeCards();
   radiusInput.value = String(settings.radiusKm ?? 5);
   compassInput.value = String(settings.compassDistanceMiles ?? 1);
   compassAll.checked = settings.compassDistanceMiles === null;
@@ -117,6 +165,7 @@ async function initStartScreen() {
   castCheck.checked = settings.castEnabled;
   syncSliders();
   void renderPermissions(permList);
+  restartHome();
   await refreshCameraList();
 
   if (DEV) startStatus.textContent = 'Dev mode: ← → turn (hold Shift for 10°).';
@@ -148,7 +197,7 @@ function readSettingsFromForm() {
     ipdMm: Number.isFinite(ipd) && ipd > 0 ? Math.min(80, Math.max(50, ipd)) : DEFAULT_IPD_MM,
     cameraId: cameraSelect.value,
     dataMode: 'live',
-    viewMode: 'ar',
+    viewMode: viewSelect.value === 'ar' ? 'ar' : 'mobile',
     voiceEnabled: false,
     showGrounded: true,
     radiusKm: parseRadius(radiusInput.value),
@@ -162,13 +211,13 @@ function readSettingsFromForm() {
   saveSettings(settings, 'transitlens-settings-v1');
 }
 
-/** Fullscreen + landscape lock. Must be kicked off synchronously from the tap. */
+/** Fullscreen (+ landscape lock for Cardboard). Must be kicked off synchronously from the tap. */
 async function enterImmersive() {
   try {
     await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-    await (screen.orientation as any).lock?.('landscape');
+    if (!isMobileView()) await (screen.orientation as any).lock?.('landscape');
   } catch {
-    // iOS and desktop don't support these; the view still works.
+    // iPhone and desktop don't support these; the view still works.
   }
 }
 
@@ -229,12 +278,10 @@ function frame() {
     status: [feedState?.status ?? '', orientationMessage, orientation?.get()?.northReference === 'magnetic' ? 'Magnetic heading - true-north correction pending' : '', !DEV && headingDeg == null ? 'Compass unavailable - check motion permission' : ''].filter(Boolean).join(' · '),
     timeMs, voice: null,
     selectedFocusId, mapFrame: streetMap?.get(), expandedMap: mapState.mode === 'expanded',
-    focusSinceMs, dwellId: dwell.id, dwellProgress: dwell.t,
+    focusSinceMs, dwellId: dwell.id, dwellProgress: dwell.t, mobile: isMobileView(),
   };
   // Selection is already resolved. Every renderer receives the same state.
-  const [left, right] = view.eyes;
-  drawHud(left.ctx, width, height, hud);
-  drawHud(right.ctx, width, height, hud);
+  for (const eye of view.eyes) drawHud(eye.ctx, width, height, hud);
 
   if (cast) {
     // The cast frame has its own aspect, so its visible FOV differs from an eye's.
@@ -296,13 +343,17 @@ function renderOverlay() {
       tilt ${settings.tiltDeg}° · ${settings.ipdMm}mm · shift ${settings.offsetMm}mm · ${Math.round(settings.viewScale * 100)}% · ${stream ? describeStream(stream) : 'no camera'}</div>`;
   }
   const error = hudError ? `<div class="hud-error">${hudError}</div>` : '';
-  const resume =
-    !DEV && !document.fullscreenElement ? '<div class="hud-hint">Rotate to landscape · long-press for settings</div>' : '';
+  // Cardboard only: ask for landscape when portrait, or offer to re-enter fullscreen where it exists (not iPhone).
+  const portrait = window.innerHeight > window.innerWidth;
+  const resume = DEV || isMobileView() ? ''
+    : portrait ? '<div class="hud-hint">Turn the phone sideways for Cardboard · long-press for settings</div>'
+    : document.fullscreenEnabled && !document.fullscreenElement ? '<div class="hud-hint">Tap to go fullscreen · long-press for settings</div>' : '';
+  const close = isMobileView() ? '<button class="view-close" data-exit aria-label="Back to settings"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' : '';
   const toastHtml = toast ? `<div class="toast">${toast}</div>` : '';
-  const calib = mode ? `<div class="calib">${MODES.map((m) => `<span${m === mode ? ' class="on"' : ''}>${m}</span>`).join('')}</div>` : '';
+  const calib = mode ? `<div class="calib">${modes().map((m) => `<span${m === mode ? ' class="on"' : ''}>${m}</span>`).join('')}</div>` : '';
   const controls = `<div class="map-controls${mapState.mode === 'expanded' ? ' is-expanded' : ''}"><button data-map="toggle" aria-pressed="${mapState.mode === 'expanded'}">${mapState.mode === 'expanded' ? 'Close' : 'Map'}</button><button data-map="in" aria-label="Zoom map in">+</button><button data-map="out" aria-label="Zoom map out">−</button></div>`;
   const credits = '<div class="map-credits" data-map-credit><a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>';
-  const html = `${credits}${mapState.mode === 'compact' ? '<div class="crosshair"></div>' : ''}${controls}${error}${resume}${calib}${toastHtml}${debug}`;
+  const html = `${credits}${mapState.mode === 'compact' ? '<div class="crosshair"></div>' : ''}${controls}${error}${resume}${close}${calib}${toastHtml}${debug}`;
   for (const eye of view.eyes) eye.overlay.innerHTML = html;
 }
 
@@ -310,6 +361,8 @@ async function start() {
   if (startBtn.disabled) return;
   const activeSession = ++session;
   readSettingsFromForm();
+  home?.stop();
+  home = null;
   // Both must start synchronously inside the tap (user-gesture requirements).
   const orientPermission = DEV ? Promise.resolve(true) : requestOrientationPermission();
   const immersive = DEV ? Promise.resolve() : enterImmersive();
@@ -340,7 +393,8 @@ async function start() {
     });
     mapState = createMapState(settings.radiusKm ?? 5);
     streetMap = createStreetMap();
-    view = createStereoView(stereoEl, stream);
+    view = isMobileView() ? createMonoView(stereoEl, stream) : createStereoView(stereoEl, stream);
+    stereoEl.classList.toggle('is-mobile', isMobileView());
     mode = null;
     longPressFired = false;
     // Swallow the Android back gesture while in the view (see popstate handler).
@@ -418,6 +472,7 @@ function stop() {
   ipdInput.value = String(settings.ipdMm);
   syncSliders();
   void renderPermissions(permList);
+  restartHome();
   refreshCameraList();
 }
 
@@ -488,8 +543,9 @@ async function adjust(direction: -1 | 1) {
 
 /** Cycles zoom → … → info → locked. */
 function cycleMode() {
-  const i = mode ? MODES.indexOf(mode) + 1 : 0;
-  mode = i < MODES.length ? MODES[i] : null;
+  const list = modes();
+  const i = mode ? list.indexOf(mode) + 1 : 0;
+  mode = i < list.length ? list[i] : null;
   showToast(mode === null ? 'calibration locked' : mode === 'info' ? 'info' : `◀ ▶ ${modeLabel()}`);
 }
 
@@ -504,6 +560,7 @@ function armAutoLock() {
 
 function onViewTap(e: MouseEvent) {
   if ((e.target as Element).closest('[data-map-credit]')) return;
+  if ((e.target as Element).closest('[data-exit]')) { stop(); return; }
   const control = (e.target as Element).closest<HTMLButtonElement>('[data-map]');
   if (control) {
     if (control.dataset.map === 'toggle') dispatchMap({ type: 'set_map_mode', mode: mapState.mode === 'compact' ? 'expanded' : 'compact' });
@@ -553,7 +610,7 @@ startBtn.addEventListener('click', start);
 stereoEl.addEventListener('click', onViewTap);
 // Long-press anywhere = back to the start screen (the deliberate way out).
 stereoEl.addEventListener('pointerdown', (e) => {
-  if ((e.target as Element).closest('[data-map], [data-map-credit]')) return;
+  if ((e.target as Element).closest('[data-map], [data-map-credit], [data-exit]')) return;
   clearTimeout(longPressTimer);
   longPressTimer = window.setTimeout(() => {
     longPressFired = true;
@@ -564,6 +621,7 @@ for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
   stereoEl.addEventListener(type, () => clearTimeout(longPressTimer));
 }
 window.addEventListener('keydown', (e) => {
+  if (!view && e.key === 'Escape') { closeSettings(); return; }
   if (view && ['m', 'M', '+', '=', '-', 'Escape'].includes(e.key)) {
     e.preventDefault();
     if (e.key === 'Escape') { if (mapState.mode === 'expanded') dispatchMap({ type: 'set_map_mode', mode: 'compact' }); else stop(); }

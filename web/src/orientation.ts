@@ -161,8 +161,12 @@ export function startOrientation(forceEvents = false, getDeclination: () => numb
 
 /** Safari compass is clockwise from magnetic north; Euler alpha is counterclockwise.
  * Keeping beta/gamma projects the rear camera in either landscape direction.
+ * Held upright in portrait (beta near ±90) the Euler angles hit gimbal lock: gamma becomes noise,
+ * while iOS's compass heading is the rear camera's direction. So gamma fades out between
+ * |beta| 45° and 75°, leaving the compass heading in charge of the view direction.
  * The tracker adds location/date declination once, after smoothing magnetic vectors.
  */
 export function safariRotation(compassHeading: number, beta: number, gamma: number): number[] {
-  return rotationFromEuler(normalizeDeg(360 - compassHeading), beta, gamma);
+  const upright = Math.min(1, Math.max(0, (Math.abs(beta) - 45) / 30));
+  return rotationFromEuler(normalizeDeg(360 - compassHeading), beta, gamma * (1 - upright));
 }

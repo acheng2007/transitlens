@@ -55,6 +55,8 @@ export type HudState<T = Plane> = {
   /** Transit: bus dwelling in the focus cone and its dwell progress 0..1. */
   dwellId?: string | null;
   dwellProgress?: number;
+  /** Phone view (no headset): no lens edges to avoid, so the compass sits higher and wider. */
+  mobile?: boolean;
 };
 
 const COLORS = {
@@ -235,9 +237,14 @@ function drawRadar(
   label(ctx, cx, cy + r + fs(20), `${range} km`, fs(8), 'rgba(255,255,255,0.75)', 'center');
 }
 
+/** Phone view: compass position (fraction of height, with a floor that leaves room for stacked badges) and width. */
+const MOBILE_COMPASS_Y = 0.13;
+const MOBILE_COMPASS_MIN_PX = 72;
+const MOBILE_COMPASS_WIDTH = 0.9;
+
 function drawPlanes(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState<Target>): HudResult<Target> {
-  const barY = h * COMPASS_Y;
-  const x0 = (w * (1 - COMPASS_WIDTH)) / 2;
+  const barY = s.mobile ? Math.max(h * MOBILE_COMPASS_Y, MOBILE_COMPASS_MIN_PX) : h * COMPASS_Y;
+  const x0 = (w * (1 - (s.mobile ? MOBILE_COMPASS_WIDTH : COMPASS_WIDTH))) / 2;
   const x1 = w - x0;
 
   if (s.headingDeg == null) {

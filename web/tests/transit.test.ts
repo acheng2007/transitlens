@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createBusFocus, startBusFeed } from '../src/buses.ts';
 import { safariRotation, startOrientation, requestOrientationPermission } from '../src/orientation.ts';
-import { signedDiffDeg, normalizeDeg, projectX } from '../src/geo.ts';
+import { signedDiffDeg, normalizeDeg, projectX, visibleHalfTan } from '../src/geo.ts';
 import { cardLines, statusTag } from '../src/format.ts';
 import type { Bus } from '../../shared/transit.ts';
 
@@ -54,6 +54,29 @@ test('Safari rear-camera matrix supports both landscape rotations and cardinal h
       assert.ok(Math.abs(signedDiffDeg(camera, heading)) < 1e-6);
     }
   }
+});
+
+test('upright iPhone (portrait) follows the compass heading despite noisy gamma near gimbal lock', () => {
+  for (const heading of [0, 90, 225]) {
+    for (const [beta, gamma] of [[90, 40], [88, -65], [80, 12]]) {
+      const r = safariRotation(heading, beta, gamma);
+      const camera = normalizeDeg(Math.atan2(-r[2], -r[5]) * 180 / Math.PI);
+      assert.ok(Math.abs(signedDiffDeg(camera, heading)) < 1e-6, `${heading} ${beta} ${gamma} -> ${camera}`);
+    }
+  }
+  // Tilted toward flat, gamma still applies as before (landscape Cardboard keeps beta near 0).
+  const r = safariRotation(90, 0, 90);
+  assert.ok(Math.abs(signedDiffDeg(normalizeDeg(Math.atan2(-r[2], -r[5]) * 180 / Math.PI), 0)) < 1e-6);
+});
+
+test('visible FOV uses the short camera edge when the stream is portrait (phone held upright)', () => {
+  // Landscape Cardboard eye, 4:3 landscape stream: unchanged.
+  assert.equal(visibleHalfTan(0.7, 1, 1, 4 / 3, 1), 0.7 * 0.75);
+  // Portrait phone screen (390x844) with a portrait 3:4 stream: short edge (x0.75), then cover-crop.
+  const portrait = visibleHalfTan(0.7, 1, 390 / 844, 3 / 4, 1);
+  assert.ok(Math.abs(portrait - 0.7 * 0.75 * ((390 / 844) / 0.75)) < 1e-9);
+  // Landscape phone screen with a landscape stream: full long edge.
+  assert.equal(visibleHalfTan(0.7, 1, 844 / 390, 4 / 3, 1), 0.7);
 });
 
 test('Safari permission denial is visible to startup and declination is applied once', async () => {

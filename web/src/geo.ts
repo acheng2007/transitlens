@@ -10,9 +10,10 @@ export const normalizeDeg = (d: number) => ((d % 360) + 360) % 360;
 export const signedDiffDeg = (target: number, from: number) => ((((target - from + 540) % 360) + 360) % 360) - 180;
 
 /**
- * tan(horizontal half-FOV) of what one eye actually shows.
- * Starts from the phone's main camera at 1x, divides by hardware zoom, then accounts for
- * `object-fit: cover` cropping the sides when the eye is narrower than the stream.
+ * tan(horizontal half-FOV) of what one eye (or the full-screen phone view) actually shows.
+ * Starts from the phone's main camera at 1x (its long edge), uses the short edge instead when the
+ * stream is portrait (phone held upright), divides by hardware zoom, then accounts for
+ * `object-fit: cover` cropping the sides when the view is narrower than the stream.
  */
 export function visibleHalfTan(
   baseHalfTan1x: number,
@@ -22,7 +23,8 @@ export function visibleHalfTan(
   fovScale: number,
 ): number {
   const crop = Math.min(1, eyeAspect / streamAspect);
-  return (baseHalfTan1x / zoom) * crop * fovScale;
+  const orientation = Math.min(1, streamAspect);
+  return (baseHalfTan1x / zoom) * orientation * crop * fovScale;
 }
 
 export const halfFovDeg = (halfTan: number) => toDeg(Math.atan(halfTan));
