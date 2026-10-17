@@ -16,7 +16,8 @@ All iPhones require device-specific size and FOV calibration.
 Physical iPhone, Android browser, headset, and outdoor alignment checks remain pending, so iPhone support is not yet certified.
 
 This user-authorized live-first checkpoint supersedes the earlier offline-demo-first sequence.
-Synthetic buses, Gemini integration, transit route overlays, predictions, navigation, and Mobile AR are deferred.
+Bus-service now also provides authoritative RTS routes, stops, and direct-route queries, and the minimap draws the focused bus's route.
+Synthetic buses, Gemini integration, predictions, navigation, and Mobile AR are deferred.
 The inherited voice, aircraft fixtures, virtual environment, and native aircraft code remain in the repository for later work and compatibility; the TransitLens web flow disables their entry points.
 Live RTS never substitutes demo vehicles after a failure.
 
@@ -51,7 +52,7 @@ Add `&camera=off` for a labeled blank background without requesting a camera.
 Press Escape to return to settings on a keyboard.
 Desktop mode fetches live RTS vehicles around that public location and does not use desktop GPS.
 Enable casting and open `/cast.html` on the laptop to view the shared HUD over WebRTC.
-The Vite proxy forwards `/api/buses` to port 8003 and retains the legacy service proxies.
+The Vite proxy forwards `/api/buses` and `/api/transit` to port 8003 and retains the legacy service proxies.
 
 If RTS fails, cached buses remain with their retrieval age and `LIVE DATA TEMPORARILY UNAVAILABLE`.
 A successful empty result says `No nearby buses`.
@@ -83,7 +84,20 @@ Map attribution is included in the headset and cast pixels.
 One map renderer updates at most 15 times per second, with buffer pixel ratio capped at 2.
 Both eyes and casting copy its composite frame.
 Typed map actions in `web/src/map-state.ts` prepare shared controls for a later Gemini integration.
-No assistant, destination search, route discovery, stops, arrivals, or navigation are added here.
+
+## Routes and stops
+
+When a bus is focused, the minimap draws the RTS route pattern it is currently running, with its stops, in the route's color.
+The line uses the same projection as the bus markers in both eyes, casting, compact, expanded, and zoomed views.
+It stays for three seconds after focus is lost and clears immediately when a different bus is focused.
+Each pattern is fetched once per session; a missing pattern draws nothing rather than an invented line.
+
+Bus-service exposes deterministic `/api/transit` endpoints for routes, patterns, nearby stops, stop-name search, and direct service between two stops or places.
+Direct-service results name the boarding and drop-off stops and give an approximate straight-line bearing to the boarding stop.
+They are labeled as direct-route coverage, not arrivals, transfers, or walking routes.
+These endpoints are the planned tools for Gemini route discovery and stop guidance.
+See [the bus-service API reference](bus-service/README.md#transit-routes-stops-and-direct-service) and [verification](docs/TRANSIT_ROUTES_VERIFICATION.md).
+No assistant, place geocoding, arrivals, or navigation are added here.
 
 ## Verification
 
@@ -95,6 +109,7 @@ npm run build
 
 Backend tests and setup are in [bus-service/README.md](bus-service/README.md).
 See [checkpoint verification](docs/LIVE_RTS_VERIFICATION.md) for completed checks and remaining physical-device gates.
+See [transit routes verification](docs/TRANSIT_ROUTES_VERIFICATION.md) for the route, stop, and overlay evidence.
 Android still uses its inherited aircraft entry point; its shared-module compatibility build is checked separately from the web bus migration.
 
 ## Product direction

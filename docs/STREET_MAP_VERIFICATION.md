@@ -2,7 +2,8 @@
 
 Implementation date: October 16, 2026.
 This milestone adds streets and vehicle positions, shared map controls, and an independent compass distance filter.
-Gemini, transit route overlays, search, stops, arrivals, and navigation remain planned.
+Gemini, transit route overlays, search, stops, arrivals, and navigation remained planned at this milestone.
+The later [transit routes milestone](TRANSIT_ROUTES_VERIFICATION.md) added routes, stops, search, and the focused-route overlay.
 
 ## Implementation
 

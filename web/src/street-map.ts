@@ -4,11 +4,13 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { mapPoint, mapZoom } from './map-state';
 import type { MapState } from './map-state';
 import type { Bus } from './buses';
+import type { TransitPattern } from '../../shared/transit';
+import { drawRoutePattern } from './route-overlay';
 
 setWorkerUrl(workerUrl);
 setWorkerCount(1);
 export type MapFrame = { canvas: HTMLCanvasElement; status: string; extentKm: number; northUp: boolean; mode: MapState['mode']; located: boolean };
-type Input = { state: MapState; buses: Bus[]; focusId: string | null; halfFov: number };
+type Input = { state: MapState; buses: Bus[]; focusId: string | null; halfFov: number; route?: TransitPattern | null };
 const SIZE = 512;
 /** One asynchronous renderer and shared composite frame shared by every output. */
 export function createStreetMap() {
@@ -30,7 +32,7 @@ export function createStreetMap() {
   let lastCapture = 0;
   function capture(roads: boolean) {
     if (!input || stopped) return;
-    const { state, buses, focusId, halfFov } = input;
+    const { state, buses, focusId, halfFov, route } = input;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, SIZE, SIZE);
     ctx.fillStyle = '#0c1922'; ctx.fillRect(0, 0, SIZE, SIZE);
@@ -45,9 +47,13 @@ export function createStreetMap() {
         const half = halfFov * Math.PI / 180;
         ctx.arc(256, 256, 160, -Math.PI / 2 - half, -Math.PI / 2 + half); ctx.closePath(); ctx.fill();
       }
+      const project = (lat: number, lon: number): [number, number] => {
+        const point = roads && map ? map.project([lon, lat]) : null;
+        return point ? [point.x, point.y] : mapPoint({ lat, lon }, state, SIZE);
+      };
+      if (route) drawRoutePattern(ctx, route, project, state.mode === 'compact');
       for (const b of buses) {
-        const point = roads && map ? map.project([b.lon, b.lat]) : null;
-        const [x, y] = point ? [point.x, point.y] : mapPoint(b, state, SIZE);
+        const [x, y] = project(b.lat, b.lon);
         if (x < 0 || y < 0 || x > SIZE || y > SIZE) continue;
         ctx.fillStyle = b.id === focusId ? '#ffc94d' : '#67dcff';
         ctx.strokeStyle = '#08121c'; ctx.lineWidth = 3;

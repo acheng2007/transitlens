@@ -12,6 +12,9 @@ The subsequent street-map milestone implements MapLibre/OpenFreeMap roads, share
 Gemini, synthetic buses, transit route overlays, arrivals, navigation, and Mobile AR remain outside this checkpoint.
 Physical iPhone acceptance for the new map remains pending.
 See [street-map verification](STREET_MAP_VERIFICATION.md).
+The following transit-data milestone adds RTS route patterns, derived stops, deterministic route and stop queries, direct-service discovery, and the focused bus's route on the minimap.
+This completes milestone 4a's first grounded-tools items; Gemini integration, highlighted-route actions, and guidance remain open.
+See [transit routes verification](TRANSIT_ROUTES_VERIFICATION.md).
 
 For current parallel assignments, file coordination, dependencies, and first tasks, use [the parallel work plan](PARALLEL_WORK.md).
 The remaining roadmap preserves the broader product direction and earlier milestone checklists as historical planning, rather than claiming each item is implemented.
