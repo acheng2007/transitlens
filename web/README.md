@@ -5,7 +5,7 @@ The default data source is `/api/buses/nearby` through the Vite proxy to bus-ser
 `?dev=1` uses live buses around fixed Reitz Union with keyboard heading controls.
 Camera/stereo/calibration/casting infrastructure remains shared with the imported code.
 
-# web/ — owner: Jaiden
+# Web application
 
 Vite + TypeScript web app (camera, stereo view, heading, HUD, cone filter, integration).
 Current instructions are in [AGENTS.md](../AGENTS.md), and collaborator assignments are in [the parallel work plan](../docs/PARALLEL_WORK.md).
