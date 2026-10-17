@@ -102,4 +102,3 @@ Android still uses its inherited aircraft entry point; its shared-module compati
 Gemini remains a planned transit copilot with authoritative route discovery and validated map actions after geographic Cardboard is proven.
 See [PRD](docs/PRD.md), [roadmap](docs/ROADMAP.md), and [agent instructions](AGENTS.md).
 Assign remaining work using the [parallel work plan](docs/PARALLEL_WORK.md), which defines eight workstreams, owned paths, dependencies, acceptance gates, and reusable task prompts.
-

@@ -71,7 +71,6 @@ Mobile AR mode is a secondary development, accessibility, and fallback experienc
 
 ## Existing Codebase
 
-
 IMPORTANT: Do NOT rebuild the AR/orientation system from scratch.
 
 Study and reuse the existing implementation for:
