@@ -2,27 +2,29 @@
 // with `npm run dev` running in web/. Not part of the app.
 
 import { startVoice } from './index';
-import type { Plane, Recognizer, VoiceHandle, VoiceState } from './types';
-
-const SAMPLE_PLANES: Plane[] = [
-  { id: 'a4f2c1', callsign: 'DAL1234', registration: 'N301DN', typeCode: 'A321', typeName: 'Airbus A321-200', airline: 'Delta Air Lines', origin: 'LGA', destination: 'ATL', lat: 33.7, lon: -84.4, altitudeFt: 4200, groundSpeedKt: 180, trackDeg: 185, distanceKm: 8.41, bearingDeg: 182.3, offsetDeg: -6 },
-  { id: 'a8b3d2', callsign: 'DAL88', registration: 'N826NW', typeCode: 'A333', typeName: 'Airbus A330-300', airline: 'Delta Air Lines', origin: 'ATL', destination: 'CDG', lat: 33.88, lon: -84.3, altitudeFt: 11000, groundSpeedKt: 290, trackDeg: 45, distanceKm: 14.62, bearingDeg: 37.4, offsetDeg: 12 },
-  { id: 'ad44b1', callsign: 'N52GT', registration: 'N52GT', typeCode: 'C172', typeName: 'Cessna 172 Skyhawk', airline: null, origin: null, destination: null, lat: 33.8, lon: -84.36, altitudeFt: 2500, groundSpeedKt: 95, trackDeg: 60, distanceKm: 4.31, bearingDeg: 51.0, offsetDeg: 2 },
-];
+import { createTransitConversation } from './transit';
+import { applyMapAction, createMapState } from '../map-state';
+import type { Recognizer, VoiceHandle, VoiceState } from './types';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const stateEl = $('state');
 const answerEl = $('answer');
 const logEl = $('log');
-const planeSel = $<HTMLSelectElement>('plane');
+const busInput = $<HTMLInputElement>('bus');
+const scripted = $<HTMLInputElement>('scripted');
+let map = createMapState(5);
+const conversation = createTransitConversation(() => ({
+  focusedBusId: busInput.value.trim() || null,
+  position: { lat: 29.6465, lon: -82.3478 }, radiusKm: 5,
+  map: { mode: map.mode, extentKm: map.extentKm },
+}), actions => {
+  actions.forEach(action => { map = applyMapAction(map, action); });
+  log(`applied map: ${JSON.stringify(map)}`);
+  return `Map ${map.mode}, ${map.extentKm} kilometers.`;
+});
 const sayInput = $<HTMLInputElement>('say');
 const speakChk = $<HTMLInputElement>('speak');
-const grokVoiceChk = $<HTMLInputElement>('grokvoice');
 const stopBtn = $<HTMLButtonElement>('stop');
-
-planeSel.add(new Option('(none in view)', ''));
-for (const p of SAMPLE_PLANES) planeSel.add(new Option(`${p.callsign} · ${p.typeName}`, p.id));
-planeSel.value = SAMPLE_PLANES[0].id;
 
 function log(line: string) {
   logEl.textContent += `${new Date().toLocaleTimeString()}  ${line}\n`;
@@ -42,9 +44,19 @@ let voice: VoiceHandle | null = null;
 function begin(useRealMic: boolean) {
   voice?.stop();
   fakeFeed = null;
+  conversation.reset();
   voice = startVoice({
-    getCurrentPlane: () => SAMPLE_PLANES.find((p) => p.id === planeSel.value) ?? null,
-    getNearbyPlanes: () => SAMPLE_PLANES,
+    onCaptureStart: () => conversation.capture(),
+    requestAnswer: async (question, signal) => {
+      if (!scripted.checked) return conversation.ask(question, signal);
+      const q = question.toLowerCase();
+      if (/expand|open.*map/.test(q)) map = applyMapAction(map, { type: 'set_map_mode', mode: 'expanded' });
+      else if (/close.*map|compact/.test(q)) map = applyMapAction(map, { type: 'set_map_mode', mode: 'compact' });
+      else if (/zoom/.test(q)) map = applyMapAction(map, { type: 'set_map_extent', extentKm: map.extentKm * (/out/.test(q) ? 2 : 0.5) });
+      else return 'Scripted demo: route 38 reports Gainesville Place. Delay, occupancy and arrival times are unknown. This is synthetic data.';
+      log(`scripted map: ${JSON.stringify(map)}`);
+      return `Scripted demo: map ${map.mode}, ${map.extentKm} kilometers.`;
+    },
     onStateChange: (s: VoiceState) => {
       stateEl.textContent = s;
       stateEl.dataset.s = s;
@@ -57,7 +69,7 @@ function begin(useRealMic: boolean) {
     },
     onError: (m) => log(`ERROR: ${m}`),
     speak: speakChk.checked,
-    ttsEndpoint: grokVoiceChk.checked ? '/api/voice/speak' : null,
+    ttsEndpoint: null,
     recognizer: useRealMic ? undefined : createFakeRecognizer(),
   });
   stopBtn.disabled = false;

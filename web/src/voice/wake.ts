@@ -2,12 +2,12 @@
 // ("grock", "rock", "croc", "grog"...) so we match a family of sounds.
 
 const GREETINGS = '(?:hey|hay|hi|ok|okay|yo|a|hey\\s+a)';
-const NAMES = '(?:grok|grock|grokk|grog|groc|croc|crock|rock|brock|gronk|krok|crack|grack|graak|drock)';
+const NAMES = '(?:gemini|geminy|jemini|gem\\s+in\\s+eye|grok|grock|grokk|grog|groc|croc|crock|rock|brock|gronk|krok|crack|grack|graak|drock)';
 
 // "hey grok", "hey grock", "a grok", "okay rock" ...
 const WAKE_WITH_GREETING = new RegExp(`\\b${GREETINGS}[,\\s]+${NAMES}\\b`, 'i');
 // Bare "grok" (rare enough as a word that it's safe alone; "rock" alone is not).
-const WAKE_BARE = /\b(?:grok|grock|grokk)\b/i;
+const WAKE_BARE = /\b(?:gemini|grok|grock|grokk)\b/i;
 
 export function normalizeTranscript(text: string): string {
   return text

@@ -226,3 +226,15 @@ body {
 .map-controls button { border: 1px solid #4fc3f788; border-radius: 8px; background: #0a1922cc; color: #d7f3ff; min-width: 34px; min-height: 36px; font: 13px system-ui; touch-action: manipulation; }
 .map-credits { position: absolute; top: calc(96% - 7px); left: 8%; width: 84%; height: 14px; background: #101a22; text-align: center; color: #eee; font: 8px/14px system-ui; pointer-events: auto; }
 .map-credits a { color: inherit; text-decoration: none; }
+
+#assistant-panel { width: min(480px, 92vw); max-height: 85dvh; overflow: auto; border: 1px solid #4fc3f788; border-radius: 16px; padding: 22px; background: #0c1922; color: var(--fg); user-select: text; }
+#assistant-panel::backdrop { background: #0009; }
+#assistant-panel h2 { margin-top: 0; }
+#assistant-panel p, #assistant-panel small { line-height: 1.5; }
+#assistant-panel button { padding: 10px 12px; border: 1px solid #4fc3f766; border-radius: 8px; background: #163140; color: #d7f3ff; cursor: pointer; }
+#assistant-close { float: right; }
+.assistant-prompts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+#assistant-form { display: flex; flex-wrap: wrap; gap: 8px; }
+#assistant-form label { width: 100%; }
+#assistant-question { flex: 1; min-width: 150px; padding: 12px; border: 1px solid #546c79; border-radius: 8px; background: #07121a; color: white; font-size: 16px; }
+#assistant-answer { min-height: 2em; color: #c5eaff; }

@@ -6,6 +6,10 @@ import type { Settings } from './config';
 import { describeStream, getZoom, getZoomRange, listCameras, setZoom, startCamera } from './camera';
 import { halfFovDeg, normalizeDeg, visibleHalfTan } from './geo';
 import { drawHud } from './hud';
+import type { VoiceHud } from './hud';
+import { startVoice } from './voice';
+import type { VoiceHandle } from './voice';
+import { createTransitConversation } from './voice/transit';
 import { requestOrientationPermission, startOrientation } from './orientation';
 import type { OrientationTracker } from './orientation';
 import { startBusFeed, watchPosition, REITZ_CENTER, createBusFocus } from './buses';
@@ -37,6 +41,10 @@ const castCheck = document.getElementById('cast-check') as HTMLInputElement;
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
 const startStatus = document.getElementById('start-status')!;
 const stereoEl = document.getElementById('stereo')!;
+const voiceCheck = document.getElementById('voice-check') as HTMLInputElement;
+const assistantPanel = document.getElementById('assistant-panel') as HTMLDialogElement;
+const questionInput = document.getElementById('assistant-question') as HTMLInputElement;
+const assistantAnswer = document.getElementById('assistant-answer')!;
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
 let view: StereoView | null = null;
@@ -58,6 +66,20 @@ let wakeLock: WakeLockSentinel | null = null;
 let orientationMessage = '';
 let session = 0;
 let cameraFrameTimer = 0;
+let focusedBusId: string | null = null;
+let voice: VoiceHandle | null = null;
+let voiceHud: VoiceHud = { state: 'idle', transcript: null, answer: null, error: null };
+let answerTimer = 0;
+const conversation = createTransitConversation(() => ({
+  focusedBusId, position: feed?.get().position ?? null, radiusKm: settings.radiusKm ?? 5,
+  map: { mode: mapState.mode, extentKm: mapState.extentKm },
+}), (actions) => {
+  actions.forEach(dispatchMap);
+  const messages: string[] = [];
+  if (actions.some(a => a.type === 'set_map_mode')) messages.push(mapState.mode === 'expanded' ? 'Map expanded.' : 'Map returned to compact view.');
+  if (actions.some(a => a.type === 'set_map_extent')) messages.push(`Map range set to ${Number(mapState.extentKm.toFixed(2))} kilometers.`);
+  return messages.join(' ');
+});
 
 /** Latest computed half-FOV, for the calibration toast and debug line. */
 let lastHalfFovDeg = 0;
@@ -96,6 +118,7 @@ async function initStartScreen() {
   compassAll.checked = settings.compassDistanceMiles === null;
   compassInput.disabled = compassAll.checked;
   castCheck.checked = settings.castEnabled;
+  voiceCheck.checked = settings.voiceEnabled;
   await refreshCameraList();
 
   if (DEV) startStatus.textContent = 'Dev mode: ← → turn (hold Shift for 10°).';
@@ -128,7 +151,7 @@ function readSettingsFromForm() {
     cameraId: cameraSelect.value,
     dataMode: 'live',
     viewMode: 'ar',
-    voiceEnabled: false,
+    voiceEnabled: voiceCheck.checked,
     showGrounded: true,
     radiusKm: parseRadius(radiusInput.value),
     compassDistanceMiles: compassAll.checked ? null : (Number(compassInput.value) > 0 && Number.isFinite(Number(compassInput.value)) ? Number(compassInput.value) : 1),
@@ -198,12 +221,13 @@ function frame() {
   const timeMs = performance.now();
   const headingDeg = currentHeading();
   const selectedFocusId = busFocus.update(buses, headingDeg, timeMs);
+  focusedBusId = selectedFocusId;
   mapState = { ...mapState, center: feedState?.position ?? null, responseCenter: feedState?.responseCenter ?? null, headingDeg };
   streetMap?.update({ state: mapState, buses: allBuses, focusId: selectedFocusId, halfFov: lastHalfFovDeg });
   const hud = {
     headingDeg, halfTan, planes: buses,
     status: [feedState?.status ?? '', orientationMessage, orientation?.get()?.northReference === 'magnetic' ? 'Magnetic heading - true-north correction pending' : '', !DEV && headingDeg == null ? 'Compass unavailable - check motion permission' : ''].filter(Boolean).join(' · '),
-    timeMs, voice: null,
+    timeMs, voice: voiceHud,
     selectedFocusId, mapFrame: streetMap?.get(), expandedMap: mapState.mode === 'expanded',
   };
   // Selection is already resolved. Every renderer receives the same state.
@@ -270,7 +294,7 @@ function renderOverlay() {
   const resume =
     !DEV && !document.fullscreenElement ? '<div class="hud-hint">Rotate to landscape · long-press for settings</div>' : '';
   const toastHtml = toast ? `<div class="toast">${toast}</div>` : '';
-  const controls = `<div class="map-controls"><button data-map="toggle">${mapState.mode === 'expanded' ? 'Close' : 'Map'}</button><button data-map="in" aria-label="Zoom map in">+</button><button data-map="out" aria-label="Zoom map out">−</button></div>`;
+  const controls = `<div class="map-controls"><button data-assistant>Ask Gemini</button><button data-map="toggle">${mapState.mode === 'expanded' ? 'Close' : 'Map'}</button><button data-map="in" aria-label="Zoom map in">+</button><button data-map="out" aria-label="Zoom map out">−</button></div>`;
   const credits = '<div class="map-credits" data-map-credit><a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>';
   const html = `${credits}${mapState.mode === 'compact' ? '<div class="crosshair"></div>' : ''}${controls}${error}${resume}${toastHtml}${debug}`;
   for (const eye of view.eyes) eye.overlay.innerHTML = html;
@@ -280,6 +304,31 @@ async function start() {
   if (startBtn.disabled) return;
   const activeSession = ++session;
   readSettingsFromForm();
+  conversation.reset();
+  focusedBusId = null;
+  voiceHud = { state: 'idle', transcript: null, answer: null, error: null, wakeEnabled: settings.voiceEnabled };
+  assistantAnswer.textContent = '';
+  // Initialize recognition and audio inside the Start gesture, before camera awaits.
+  voice = startVoice({
+    listenForWake: settings.voiceEnabled,
+    onCaptureStart: () => conversation.capture(),
+    requestAnswer: (question, signal) => conversation.ask(question, signal),
+    ttsEndpoint: null,
+    onStateChange: state => { voiceHud.state = state; },
+    onTranscript: text => {
+      clearTimeout(answerTimer);
+      voiceHud = { ...voiceHud, transcript: text, answer: null, error: null };
+      assistantAnswer.textContent = 'Thinking…';
+    },
+    onAnswer: text => {
+      voiceHud.answer = text;
+      assistantAnswer.textContent = text;
+      answerTimer = window.setTimeout(() => { voiceHud.answer = null; voiceHud.transcript = null; }, 25000);
+    },
+    onError: message => {
+      voiceHud.error = message.includes('not supported') ? 'Use Ask Gemini to type a question' : message;
+    },
+  });
   // Both must start synchronously inside the tap (user-gesture requirements).
   const orientPermission = DEV ? Promise.resolve(true) : requestOrientationPermission();
   const immersive = DEV ? Promise.resolve() : enterImmersive();
@@ -358,6 +407,12 @@ function watchForFrames(s: MediaStream) {
 /** Back to the start screen (e.g. after the Android back gesture exits fullscreen). */
 function stop() {
   session++;
+  voice?.stop();
+  voice = null;
+  conversation.reset();
+  focusedBusId = null;
+  clearTimeout(answerTimer);
+  assistantPanel.close();
   clearTimeout(cameraFrameTimer);
   void wakeLock?.release();
   wakeLock = null;
@@ -470,6 +525,12 @@ function armAutoLock() {
 }
 
 function onViewTap(e: MouseEvent) {
+  if ((e.target as Element).closest('[data-assistant]')) {
+    conversation.capture();
+    assistantPanel.showModal();
+    questionInput.focus();
+    return;
+  }
   if ((e.target as Element).closest('[data-map-credit]')) return;
   const control = (e.target as Element).closest<HTMLButtonElement>('[data-map]');
   if (control) {
@@ -519,7 +580,7 @@ startBtn.addEventListener('click', start);
 stereoEl.addEventListener('click', onViewTap);
 // Long-press anywhere = back to the start screen (the deliberate way out).
 stereoEl.addEventListener('pointerdown', (e) => {
-  if ((e.target as Element).closest('[data-map], [data-map-credit]')) return;
+  if ((e.target as Element).closest('[data-map], [data-map-credit], [data-assistant]')) return;
   clearTimeout(longPressTimer);
   longPressTimer = window.setTimeout(() => {
     longPressFired = true;
@@ -530,6 +591,7 @@ for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
   stereoEl.addEventListener(type, () => clearTimeout(longPressTimer));
 }
 window.addEventListener('keydown', (e) => {
+  if (assistantPanel.open) return;
   if (view && ['m', 'M', '+', '=', '-', 'Escape'].includes(e.key)) {
     e.preventDefault();
     if (e.key === 'Escape') { if (mapState.mode === 'expanded') dispatchMap({ type: 'set_map_mode', mode: 'compact' }); else stop(); }
@@ -563,3 +625,16 @@ setInterval(() => {
 }, 500);
 
 initStartScreen();
+
+document.getElementById('assistant-close')!.addEventListener('click', () => assistantPanel.close());
+document.getElementById('assistant-form')!.addEventListener('submit', e => {
+  e.preventDefault();
+  const question = questionInput.value.trim();
+  if (!question || !voice) return;
+  questionInput.value = '';
+  void voice.ask(question);
+});
+assistantPanel.addEventListener('click', e => {
+  const prompt = (e.target as Element).closest<HTMLButtonElement>('[data-question]')?.dataset.question;
+  if (prompt && voice) void voice.ask(prompt);
+});
