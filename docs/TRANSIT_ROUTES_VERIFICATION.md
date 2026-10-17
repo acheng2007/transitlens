@@ -98,8 +98,16 @@ After the bus left the view, the route rotated with the heading, stayed for the 
 Overlapping stop dots at the 5 km extent were fixed after visual inspection.
 The only browser error was a missing favicon that predates this change.
 
+## Phone check
+
+On October 16, 2026, the route overlay was checked on a phone over an HTTPS Cloudflare tunnel to the local Vite server.
+The updated bus-service on port 8003 supplied live RTS routes and patterns.
+The user reported that focusing a bus showed the route overlay and that the behavior looked fine.
+This confirms handheld phone rendering of the focused-route overlay with live data.
+It does not certify Cardboard fusion, outdoor geographic alignment, Android Chrome, or phone-to-laptop casting.
+
 ## Pending acceptance
 
-Physical iPhone, Android, Cardboard readability, and phone-to-laptop casting checks of the route overlay remain pending.
+Cardboard readability, Android Chrome, outdoor geographic alignment, and phone-to-laptop casting checks of the route overlay remain pending.
 Transit tool calls from Gemini depend on the separate voice-service work.
 Seasonal or inactive patterns that RTS does not return as default or active are not included until a vehicle reports them.
