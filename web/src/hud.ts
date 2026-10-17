@@ -12,10 +12,12 @@
 
 import { aircraftStatus, cardLines, flightLabel, statusTag } from './format';
 import type { AircraftStatus } from './format';
-import { halfFovDeg, normalizeDeg, projectX, signedDiffDeg } from './geo';
+import { bearingDeg, haversineKm, halfFovDeg, normalizeDeg, projectX, signedDiffDeg } from './geo';
 import type { Plane } from './planes';
 import type { MapFrame } from './street-map';
-import type { Bus } from './buses';
+import type { Bus, Position } from './buses';
+import type { JourneyState } from './journey-state';
+import { arrivalLabel } from './journey-state';
 type Target = Plane | Bus;
 import type { VoiceState } from './voice';
 
@@ -45,6 +47,11 @@ export type HudState<T = Plane> = {
   selectedFocusId?: string | null;
   mapFrame?: MapFrame | null;
   expandedMap?: boolean;
+  journey?: JourneyState;
+  position?: Position | null;
+  assistantSource?: string;
+  demo?: boolean;
+  handheld?: boolean;
   /** Data feed status, shown when there are no planes at all (e.g. "live · waiting for GPS"). */
   status: string;
   /** Frame timestamp (same for both eyes) for animations. */
@@ -76,8 +83,8 @@ const BLINK_MS = 400;
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
 /** Global text size multiplier; tune here if text is too big/small in the headset. */
-const TEXT_SCALE = 0.8;
-const fs = (px: number) => Math.round(px * TEXT_SCALE * 10) / 10;
+let textScale = 0.8;
+const fs = (px: number) => Math.round(px * textScale * 10) / 10;
 
 /** Vertical position of the compass bar (fraction of eye height). The lenses hide the very top. */
 const COMPASS_Y = 0.24;
@@ -99,11 +106,12 @@ const HINT_MS = 15000;
 export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState<Bus>): HudResult<Bus>;
 export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState): HudResult;
 export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState<Target>): HudResult<Target> {
+  textScale = s.handheld ? Math.max(1, Math.min(1.4, w / 900)) : 0.8;
   ctx.clearRect(0, 0, w, h);
   ctx.textBaseline = 'middle';
   const result = drawPlanes(ctx, w, h, s);
   // Transit map frames remain independent of compass filtering and voice status.
-  if (s.mapFrame) drawStreetMap(ctx, w, h, s.mapFrame, !!s.voice && (s.voice.state !== 'idle' || !!s.voice.answer || !!s.voice.error));
+  if (s.mapFrame) drawStreetMap(ctx, w, h, s.mapFrame, !!s.journey?.plan || !!s.journey?.guidance || !!s.voice && (s.voice.state !== 'idle' || !!s.voice.answer || !!s.voice.error));
   else if (s.headingDeg != null) {
     drawRadar(ctx, w, h, s, s.headingDeg, result.focus?.id ?? null);
   }
@@ -111,8 +119,48 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: 
     const words = wrapStatus(s.status);
     words.forEach((line, i) => label(ctx, w / 2, h * 0.88 + i * fs(14), line, fs(10), COLORS.text, 'center'));
   }
+  if (s.journey) drawJourney(ctx, w, h, s);
   if (s.voice) drawVoice(ctx, w, h, s.voice, s.timeMs);
   return result;
+}
+
+/** The trip result is shared across every eye and casting. */
+function drawJourney(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState<Target>) {
+  const state = s.journey!;
+  const cx = w * 0.71;
+  if (state.guidance) {
+    const j = state.guidance;
+    label(ctx,cx,h*0.38,`BOARD ROUTE ${j.routeId}`,fs(15),'#b5ff67','center',true);
+    ctx.font=`${fs(11)}px ${FONT}`;
+    const names=wrapLines(ctx,j.boardingStop.name,w*0.39).slice(0,2);
+    names.forEach((line,i)=>label(ctx,cx,h*0.41+i*fs(14),line,fs(11),COLORS.text,'center'));
+    label(ctx,cx,h*0.48,arrivalLabel(j),fs(11),'#ffc94d','center');
+    if (s.position) {
+      const distance=haversineKm(s.position.lat,s.position.lon,j.boardingStop.lat,j.boardingStop.lon);
+      const bearing=bearingDeg(s.position.lat,s.position.lon,j.boardingStop.lat,j.boardingStop.lon);
+      const off=s.headingDeg===null?null:signedDiffDeg(bearing,s.headingDeg);
+      const direction=off===null ? `${Math.round(bearing)}° true` : Math.abs(off)<8?'AHEAD':off<0?'TURN LEFT':'TURN RIGHT';
+      label(ctx,cx,h*0.52,`${Math.round(distance*1000)} m · ${direction}`,fs(14),'#b5ff67','center',true);
+      label(ctx,cx,h*0.55,'STOP BEARING · NOT A WALKING PATH',fs(7),COLORS.text,'center');
+      // Bearing diamond is constrained to the compass, leaving the central view clear.
+      if (off!==null) {
+        const x=Math.max(w*0.12,Math.min(w*0.88,projectX(off,s.halfTan,w)??(off<0?0:w)));
+        const y=h*0.18;
+        ctx.save();ctx.translate(x,y);ctx.rotate(Math.PI/4);ctx.fillStyle='#b5ff67';
+        ctx.shadowColor='#b5ff67';ctx.shadowBlur=12;ctx.fillRect(-5,-5,10,10);ctx.restore();
+        label(ctx,x,y-fs(15),'BOARD',fs(8),'#b5ff67','center',true);
+      }
+    }
+  } else if (state.plan) {
+    const p=state.plan;
+    label(ctx,cx,h*0.38,p.status==='ambiguous'?'WHICH DESTINATION?':p.options.length?`${p.options.length} DIRECT OPTIONS`:'NO DIRECT TRIP',fs(12),'#b5ff67','center',true);
+    p.options.slice(0,3).forEach((j,i)=>{
+      label(ctx,cx,h*(0.43+i*0.045),`${i+1} · ROUTE ${j.routeId} · ${j.rideStops} stops`,fs(11),j.color,'center',true);
+    });
+    if (p.options.length) label(ctx,cx,h*0.57,'Say “take the first option”',fs(9),COLORS.text,'center');
+    if (p.status==='ambiguous') label(ctx,cx,h*0.44,'Name a stop to narrow the search',fs(9),COLORS.text,'center');
+  }
+  if (s.assistantSource) label(ctx,w/2,h*0.12,s.assistantSource.toUpperCase(),fs(8),s.demo?'#ffc94d':'#81d9ed','center');
 }
 
 /** Radar center (fractions of eye width/height) and radius (fraction of eye width). Kept inward: lens edges blur. */

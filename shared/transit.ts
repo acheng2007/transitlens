@@ -2,6 +2,7 @@
 export type Bus = {
   id: string;
   route: string;
+  patternId?: string | null;
   destination: string | null;
   lat: number;
   lon: number;

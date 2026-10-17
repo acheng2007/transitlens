@@ -17,7 +17,9 @@ The minimap stays visible alongside subtitles.
 
 `transit.ts` sends only bounded questions, history, focused/previous bus IDs, location, search radius and map state.
 The server resolves vehicle facts, and the client validates the complete action batch and request ID before changing shared map state.
-Camera frames are not part of this feature.
+Only an explicit bus-sign reading question attaches a resized JPEG; normal transit commands do not attach images.
+A seven-second follow-up capture window supports conversation without another wake phrase.
+Source labels distinguish Gemini API, local transit tools and scripted demo responses.
 Legacy `Plane` exports and optional context hooks remain for imported code compatibility; the active service requires the transit contract in `shared/assistant.ts`.
 Optional remote audio helpers remain available, but the Gemini flow uses browser speech only.
 

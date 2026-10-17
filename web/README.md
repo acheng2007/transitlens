@@ -4,7 +4,7 @@ Use [the root setup instructions](../README.md) for the live RTS Cardboard app a
 The default data source is `/api/buses/nearby` through the Vite proxy to bus-service on port 8003.
 `?dev=1` uses live buses around fixed Reitz Union with keyboard heading controls.
 The former `?data=fixture`, aircraft simulation and virtual-sky entry points are disabled.
-Gemini bus questions, browser speech and typed questions are active; run [voice-service](../voice-service/README.md) on port 8002.
+Gemini bus questions, route discovery, highlighting, boarding-stop guidance, visual sign reading, browser speech, handheld mode and typed questions are active; run [voice-service](../voice-service/README.md) on port 8002.
 Camera/stereo/calibration/casting infrastructure remains shared with the imported code.
 
 The following upstream reference describes the original aircraft app and is retained for calibration and provenance.

@@ -68,7 +68,7 @@ export type Settings = {
 export type DataMode = 'demo' | 'live' | 'fixture' | 'sim';
 
 /** 'ar' = camera passthrough; 'vr' = virtual Atlanta scene rendered in 3D (src/vr/). */
-export type ViewMode = 'ar' | 'vr';
+export type ViewMode = 'ar' | 'handheld' | 'vr';
 
 export const DEFAULT_SETTINGS: Settings = {
   presetId: 'generic',

@@ -128,3 +128,68 @@ async def test_unbounded_model_tool_loop_fails_without_returning_actions(monkeyp
     monkeypatch.setattr(genai, 'Client', LoopClient)
     with pytest.raises(ValueError, match='Tool limit'):
         await main.ask_gemini(main.AskRequest(**REQUEST), DATA)
+
+
+@pytest.mark.asyncio
+async def test_journey_tools_resolve_option_ids_against_server_results(monkeypatch):
+    from journeys import Copilot
+    points=[dict(lat=29.6465,lon=-82.3478),dict(lat=29.64,lon=-82.34)]
+    stops=[dict(id='a',name='Boarding',sequence=0,**points[0]),dict(id='b',name='Shands',sequence=1,**points[1])]
+    overlay=dict(id='38:585',routeId='38',patternId='585',name='Route 38',color='#aabbcc',direction='OUTBOUND',shape=points,stops=stops)
+    option=dict(id='option-1',routeId='38',routeName='Route 38',color='#aabbcc',patternId='585',direction='OUTBOUND',boardingStop=stops[0],alightingStop=stops[1],walkKm=0.1,rideStops=1,overlay=overlay,activeVehicles=1,prediction=None)
+    plan=dict(query='Shands',demo=False,networkStatus='available',fetchedAt=DATA['fetchedAt'],status='available',scope='Direct routes only',options=[option],destinations=[stops[1]])
+    copilot=Copilot(main.Context(position=main.Position(lat=29.6465,lon=-82.3478),destinationQuery='Shands'),'http://test')
+    monkeypatch.setattr(copilot,'get',AsyncMock(return_value=plan))
+    summary,actions=await copilot.call('find_routes',{'destination':'Shands'})
+    assert 'overlay' not in summary['options'][0]
+    assert actions[0].plan.options[0].boardingStop.id=='a'
+    with pytest.raises(ValueError,match='no longer available'):
+        await copilot.call('guide_to_stop',{'optionId':'model-invented'})
+    result,actions=await copilot.call('guide_to_stop',{'optionId':'option-1'})
+    assert actions[0].journey.boardingStop.id=='a'
+    assert 'Approximate' in result['guidance']
+
+
+def test_camera_still_is_optional_bounded_and_not_accepted_as_arbitrary_data():
+    import base64
+    from pydantic import ValidationError
+    main.CameraImage(data=base64.b64encode(b'\xff\xd8test\xff\xd9').decode())
+    for bad in ['not-base64',base64.b64encode(b'html instead').decode(),'a'*400001]:
+        with pytest.raises(ValidationError): main.CameraImage(data=bad)
+
+
+def test_no_key_demo_map_actions_are_labeled_not_gemini(monkeypatch):
+    monkeypatch.delenv('GEMINI_API_KEY',raising=False)
+    monkeypatch.setattr(main,'transit_context',AsyncMock(return_value=DATA))
+    request={**REQUEST,'question':'Expand the map','context':{**REQUEST['context'],'dataMode':'demo'}}
+    result=TestClient(main.app).post('/api/voice/ask',json=request).json()
+    assert result['source']=='scripted'
+    assert result['demo'] is True
+    assert result['actions']==[dict(type='set_map_mode',mode='expanded')]
+
+
+@pytest.mark.asyncio
+async def test_explicit_camera_still_reaches_gemini_without_entering_text_history(monkeypatch):
+    import base64
+    image_bytes=b'\xff\xd8test\xff\xd9'
+    rounds=[]
+    class VisionClient:
+        def __init__(self,**kw): self.aio=self;self.models=self
+        async def __aenter__(self):return self
+        async def __aexit__(self,*args):pass
+        async def generate_content(self,**kw):
+            rounds.append(kw)
+            assert kw['contents'][0].parts[-1].inline_data.data==image_bytes
+            assert kw['contents'][0].parts[-1].inline_data.mime_type=='image/jpeg'
+            if len(rounds)==1:
+                content=types.Content(role='model',parts=[types.Part.from_function_call(name='get_transit_context',args={})])
+            else:
+                content=types.Content(role='model',parts=[types.Part.from_text(text='The sign appears to show route 38.')])
+            return types.GenerateContentResponse(candidates=[types.Candidate(content=content)])
+    monkeypatch.setenv('GEMINI_API_KEY','test-placeholder')
+    monkeypatch.setattr(genai,'Client',VisionClient)
+    req=main.AskRequest(**{**REQUEST,'question':'Read the bus sign','image':{'data':base64.b64encode(image_bytes).decode()}})
+    answer,actions=await main.ask_gemini(req,DATA)
+    assert '38' in answer
+    assert not actions
+    assert not req.history

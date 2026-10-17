@@ -18,7 +18,7 @@ const conversation = createTransitConversation(() => ({
   position: { lat: 29.6465, lon: -82.3478 }, radiusKm: 5,
   map: { mode: map.mode, extentKm: map.extentKm },
 }), actions => {
-  actions.forEach(action => { map = applyMapAction(map, action); });
+  actions.forEach(action => { if (action.type === 'set_map_mode' || action.type === 'set_map_extent') map = applyMapAction(map, action); });
   log(`applied map: ${JSON.stringify(map)}`);
   return `Map ${map.mode}, ${map.extentKm} kilometers.`;
 });
