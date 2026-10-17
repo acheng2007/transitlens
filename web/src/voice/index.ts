@@ -15,7 +15,7 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
   const lang = opts.lang ?? 'en-US';
   const questionTimeoutMs = opts.questionTimeoutMs ?? 8000;
   const shouldSpeak = opts.speak ?? true;
-  const ttsEndpoint = opts.ttsEndpoint === undefined ? '/api/voice/speak' : opts.ttsEndpoint;
+  const ttsEndpoint = opts.ttsEndpoint ?? null;
 
   const silenceMs = opts.endOfQuestionSilenceMs ?? 1300;
   const maxQuestionMs = opts.maxQuestionMs ?? 15000;
@@ -23,6 +23,8 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
   let state: VoiceState = 'idle';
   let stopped = false;
   let recognizer: Recognizer | null = null;
+  let request: AbortController | null = null;
+  let generation = 0;
 
   // Question capture. Chrome marks a phrase "final" at any short pause, so asking on the first
   // final result cut people off mid-sentence. Instead, after the wake phrase we collect every
@@ -53,7 +55,7 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
       beginCapture();
     }
 
-    // The phrase containing the wake word keeps arriving with "hey grok" at the front; strip it.
+    // The phrase containing the wake word keeps arriving with "Hey Gemini" at the front; strip it.
     const phrase = (matchWake(text) ?? text).trim();
     if (isFinal) {
       if (phrase) committed.push(phrase);
@@ -74,6 +76,7 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
   }
 
   function beginCapture() {
+    opts.onCaptureStart?.();
     capturing = true;
     committed = [];
     interim = '';
@@ -81,7 +84,7 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
     clearTimeout(questionTimer);
     clearTimeout(silenceTimer);
     clearTimeout(maxTimer);
-    // "hey grok" and then nothing: give up quietly.
+    // "Hey Gemini" and then nothing: give up quietly.
     questionTimer = window.setTimeout(() => {
       if (!currentQuestion()) {
         endCapture();
@@ -112,22 +115,26 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
   // ---- Ask the service and speak the answer --------------------------------
 
   async function ask(question: string): Promise<void> {
-    if (stopped) return;
+    question = question.trim().slice(0, 1000);
+    if (stopped || !question) return;
+    const current = ++generation;
+    request?.abort();
+    stopSpeaking();
     endCapture();
     opts.onTranscript?.(question);
     setState('thinking');
 
     const answer = await fetchAnswer(question);
-    if (stopped) return;
+    if (stopped || current !== generation) return;
     opts.onAnswer(answer);
 
     if (shouldSpeak) {
       setState('speaking');
       // Don't let the mic hear the phone talking to itself.
       recognizer?.stop();
-      const spokenByGrok = ttsEndpoint ? await speakRemote(answer, ttsEndpoint) : false;
-      if (!spokenByGrok && !stopped) await speak(answer, lang);
-      if (stopped) return;
+      const spokenRemotely = ttsEndpoint ? await speakRemote(answer, ttsEndpoint) : false;
+      if (!spokenRemotely && !stopped) await speak(answer, lang);
+      if (stopped || current !== generation) return;
       recognizer?.start();
     }
     setState('idle');
@@ -135,12 +142,13 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
 
   async function fetchAnswer(question: string): Promise<string> {
     const ctrl = new AbortController();
-    const t = window.setTimeout(() => ctrl.abort(), 15000);
+    request = ctrl;
+    const t = window.setTimeout(() => ctrl.abort(), 20000);
     try {
       if (opts.requestAnswer) return await opts.requestAnswer(question, ctrl.signal);
       throw new Error('Transit conversation adapter is unavailable');
     } catch (e) {
-      opts.onError?.(`Voice service unavailable: ${(e as Error).message}`);
+      if (request === ctrl && !stopped) opts.onError?.(`Voice service unavailable: ${(e as Error).message}`);
       return OFFLINE_ANSWER;
     } finally {
       clearTimeout(t);
@@ -153,6 +161,8 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
 
   if (opts.recognizer) {
     recognizer = opts.recognizer;
+  } else if (opts.listenForWake === false) {
+    // Typed questions remain available without requesting microphone access.
   } else if (isSpeechRecognitionSupported()) {
     recognizer = createBrowserRecognizer(lang);
   } else {
@@ -171,6 +181,8 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
   return {
     stop() {
       stopped = true;
+      generation++;
+      request?.abort();
       endCapture();
       recognizer?.stop();
       stopSpeaking();

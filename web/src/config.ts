@@ -51,7 +51,7 @@ export type Settings = {
    */
   dataMode: DataMode;
   viewMode: ViewMode;
-  /** "Hey Grok" voice assistant (inherited module in src/voice/). */
+  /** "Hey Gemini" voice assistant (inherited module in src/voice/). */
   voiceEnabled: boolean;
   /** Search radius in kilometers; null uses the data provider default. */
   radiusKm: number | null;
@@ -80,7 +80,7 @@ export const DEFAULT_SETTINGS: Settings = {
   castEnabled: false,
 };
 
-export const TRANSIT_SETTINGS: Settings = { ...DEFAULT_SETTINGS, dataMode: 'live', viewMode: 'ar', voiceEnabled: false, radiusKm: 5, compassDistanceMiles: 1 };
+export const TRANSIT_SETTINGS: Settings = { ...DEFAULT_SETTINGS, dataMode: 'live', viewMode: 'ar', voiceEnabled: true, radiusKm: 5, compassDistanceMiles: 1 };
 
 const STORAGE_KEY = 'transitlens-settings-v1';
 

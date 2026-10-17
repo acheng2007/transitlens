@@ -16,7 +16,9 @@ All iPhones require device-specific size and FOV calibration.
 Physical iPhone, Android browser, headset, and outdoor alignment checks remain pending, so iPhone support is not yet certified.
 
 This user-authorized live-first checkpoint supersedes the earlier offline-demo-first sequence.
-Synthetic buses, Gemini integration, transit route overlays, predictions, navigation, and Mobile AR are deferred.
+Gemini focused-bus questions and validated map controls are implemented in the next checkpoint described below.
+Synthetic buses in the main app, transit route overlays, predictions, navigation, and Mobile AR are deferred.
+The voice flow now uses Gemini and live bus context.
 Live RTS never substitutes demo vehicles after a failure.
 
 ## Run locally
@@ -81,8 +83,30 @@ Map attribution is included in the headset and cast pixels.
 
 One map renderer updates at most 15 times per second, with buffer pixel ratio capped at 2.
 Both eyes and casting copy its composite frame.
-Typed map actions in `web/src/map-state.ts` prepare shared controls for a later Gemini integration.
-No assistant, destination search, route discovery, stops, arrivals, or navigation are added here.
+Typed map actions in `web/src/map-state.ts` now drive validated Gemini map commands.
+Destination search, route discovery, stops, arrivals, and navigation remain pending.
+
+## Ask Gemini
+
+Run [voice-service](voice-service/README.md) on port 8002 with a server-only `GEMINI_API_KEY` in its ignored `.env`.
+The default model is configurable through `GEMINI_MODEL`.
+Keep bus-service running on port 8003 for authoritative live context.
+
+Enable **Hey Gemini voice assistant** on the start screen.
+Hold your gaze on a bus route marker, then ask "Hey Gemini, where is this bus going?", "Is it delayed?", "How full is it?", or "What buses are nearby?"
+Say "expand the map", "close the map", "zoom in", or "zoom out" to control the same map shown in both eyes and casting.
+**Ask Gemini** opens example prompts and typed questions, including when microphone recognition is unavailable or disabled.
+Answers use browser speech synthesis and subtitles beside the minimap.
+
+The assistant uses gaze and live RTS identity, without transmitting camera frames.
+The service resolves bus IDs against trusted data and labels unavailable or stale information.
+A destination headsign does not establish every stop; verified coverage, arrivals and walking directions are not available yet.
+Missing Gemini configuration or cloud failure produces a clearly labeled local summary rather than a fabricated answer.
+Microphone failure leaves tracking and typed questions available.
+
+A separate [voice development harness](web/src/voice/README.md) accepts scripted wake transcripts and synthetic responses without cloud access.
+These responses are explicitly labeled scripted demo behavior.
+See [Gemini verification](docs/GEMINI_VERIFICATION.md) for automated checks and pending live/hardware tests.
 
 ## Verification
 
@@ -99,6 +123,7 @@ Its shared-module build is checked separately; physical APK acceptance remains p
 
 ## Product direction
 
-Gemini remains a planned transit copilot with authoritative route discovery and validated map actions after geographic Cardboard is proven.
+Gemini now answers focused-bus questions and changes the shared map.
+Authoritative route discovery, route highlighting and boarding-stop guidance remain planned.
 See [PRD](docs/PRD.md), [roadmap](docs/ROADMAP.md), and [agent instructions](AGENTS.md).
 Assign remaining work using the [parallel work plan](docs/PARALLEL_WORK.md), which defines eight workstreams, relevant files, dependencies, acceptance gates, and reusable task prompts.

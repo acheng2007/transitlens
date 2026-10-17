@@ -3,6 +3,8 @@
 Use [the root setup instructions](../README.md) for the live RTS Cardboard app and [verification record](../docs/LIVE_RTS_VERIFICATION.md) for current support limitations.
 The default data source is `/api/buses/nearby` through the Vite proxy to bus-service on port 8003.
 `?dev=1` uses live buses around fixed Reitz Union with keyboard heading controls.
+Use the explicit Gainesville demo for deterministic development.
+Gemini bus questions, browser speech and typed questions are active; run [voice-service](../voice-service/README.md) on port 8002.
 Camera/stereo/calibration/casting infrastructure remains shared with the imported code.
 
 # Web application

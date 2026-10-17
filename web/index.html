@@ -45,11 +45,31 @@
         <input id="cast-check" type="checkbox" />
         Cast to laptop (open /cast.html there)
       </label>
+      <label class="checkbox"><input id="voice-check" type="checkbox" checked />Hey Gemini voice assistant</label>
+      <p class="hint">Look at a bus route marker, hold your gaze, then say “Hey Gemini, where is this bus going?”<br>Ask about delays, occupancy or nearby buses, or say “expand the map” and “zoom in.”<br>Ask Gemini also accepts typed questions. Bus identity comes from live RTS and your heading.</p>
       <button id="start-btn">Start</button>
       <p class="hint">Rotate the phone to landscape. All iPhones need size and FOV calibration.<br>In view: double-tap middle = calibrate (then middle = next setting, left/right = adjust) · long-press = back to this screen</p>
       <p id="start-status"></p>
     </div>
     <div id="stereo" hidden></div>
+    <dialog id="assistant-panel" aria-labelledby="assistant-title">
+      <button id="assistant-close" type="button" aria-label="Close Gemini">Close</button>
+      <h2 id="assistant-title">Ask Gemini</h2>
+      <p>Ask about your selected bus or control the map.</p>
+      <div class="assistant-prompts">
+        <button type="button" data-question="Where is this bus going?">Where is it going?</button>
+        <button type="button" data-question="Is this bus delayed or full?">Delay &amp; occupancy</button>
+        <button type="button" data-question="What buses are nearby?">Nearby buses</button>
+        <button type="button" data-question="Expand the map">Expand map</button>
+      </div>
+      <form id="assistant-form">
+        <label for="assistant-question">Your question</label>
+        <input id="assistant-question" name="question" maxlength="1000" placeholder="Does this bus go to Shands?" required autocomplete="off" />
+        <button type="submit">Ask</button>
+      </form>
+      <p id="assistant-answer" role="status" aria-live="polite"></p>
+      <small>Destination displays do not confirm every stop. Verified arrivals and walking directions are not available yet.</small>
+    </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
