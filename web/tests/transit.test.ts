@@ -20,11 +20,21 @@ test('shared dwell uses wraparound, resets on target changes, and clears on comp
   assert.equal(f.update([], 0, 2200), null);
 });
 
+test('dwell progress is read-only and matches selection timing', () => {
+  const f = createBusFocus();
+  assert.deepEqual(f.progress(0), { id: null, t: 0 });
+  assert.equal(f.update([bus], 0, 1000), null);
+  assert.deepEqual(f.progress(1325), { id: bus.id, t: 0.5 });
+  assert.deepEqual(f.progress(5000), { id: bus.id, t: 1 });
+  assert.equal(f.update([bus], 0, 1650), bus.id);
+});
+
 test('nullable transit card preserves unknown delay and speed', () => {
-  assert.deepEqual(cardLines(bus), ['ROUTE 38', 'Destination unavailable', '0.19 mi away']);
+  assert.deepEqual(cardLines(bus), ['ROUTE 38 · Destination unknown', '0.19 mi']);
   assert.equal(statusTag(bus), null);
   assert.equal(statusTag({ ...bus, delayed: false }), 'NO DELAY REPORTED');
-  assert.ok(cardLines({ ...bus, speedMph: 0 })[2].includes('0 mph'));
+  assert.equal(cardLines({ ...bus, speedMph: 0 })[1], '0.19 mi · Stopped');
+  assert.equal(cardLines({ ...bus, speedMph: 14.6, passengerLoad: 'HALF_EMPTY' })[1], '0.19 mi · 15 mph · Half full');
 });
 
 test('pinhole and signed geographic direction retain wraparound and left/right', () => {

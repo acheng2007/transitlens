@@ -3,51 +3,133 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#0B1020" />
     <title>TransitLens</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="start-screen">
-      <h1>TransitLens</h1>
-      <label>
-        Phone
-        <select id="preset-select"></select>
-      </label>
-      <label>
-        Lens spacing (mm)
-        <input id="ipd-input" type="number" min="50" max="80" step="1" />
-      </label>
-      <label>
-        Camera
-        <select id="camera-select"></select>
-      </label>
-      <label>
-        View
-        <select id="view-select">
-          <option value="ar">Google Cardboard</option>
-        </select>
-      </label>
-      <label>
-        Data
-        <select id="data-select">
-          <option value="live">Live RTS</option>
-        </select>
-      </label>
-      <label>
-        Search radius (km)
-        <input id="radius-input" type="number" min="1" max="400" step="1" inputmode="numeric" placeholder="5 km" />
-      </label>
-      <label>Compass distance (miles)<input id="compass-distance" type="number" min="0.01" step="any" value="1" inputmode="decimal" /></label>
-      <label class="checkbox"><input id="compass-all" type="checkbox" />All nearby</label>
-      <p class="hint">Compass distance filters individual buses and does not fetch beyond the search radius.<br>Map: M to open/close, + / − to zoom. Escape closes the map first.</p>
-      <label class="checkbox">
-        <input id="cast-check" type="checkbox" />
-        Cast to laptop (open /cast.html there)
-      </label>
-      <button id="start-btn">Start</button>
-      <p class="hint">Rotate the phone to landscape. All iPhones need size and FOV calibration.<br>In view: double-tap middle = calibrate (then middle = next setting, left/right = adjust) · long-press = back to this screen</p>
-      <p id="start-status"></p>
+      <div class="start-inner">
+        <header class="brand col-a enter" style="--i: 0">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="3" width="16" height="15" rx="3" />
+              <path d="M4 11h16M8 21l1-3M16 21l-1-3" />
+              <circle cx="8.5" cy="14.5" r="1" fill="currentColor" />
+              <circle cx="15.5" cy="14.5" r="1" fill="currentColor" />
+            </svg>
+          </div>
+          <div>
+            <h1>TransitLens</h1>
+            <p class="tagline">Look down the street. See which RTS bus is which.</p>
+          </div>
+        </header>
+
+        <section class="hero glass col-a enter" style="--i: 1">
+          <button id="start-btn">
+            <span class="start-label">Start AR</span>
+            <svg class="start-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </button>
+          <p id="start-status" role="status"></p>
+          <ul class="perm-list" id="perm-list" aria-label="Permissions">
+            <li class="perm" data-perm="camera"><span class="perm-dot"></span><span class="perm-name">Camera</span><span class="perm-state">…</span></li>
+            <li class="perm" data-perm="location"><span class="perm-dot"></span><span class="perm-name">Location</span><span class="perm-state">…</span></li>
+            <li class="perm" data-perm="motion"><span class="perm-dot"></span><span class="perm-name">Motion</span><span class="perm-state">…</span></li>
+          </ul>
+        </section>
+
+        <section class="group col-a enter" style="--i: 2">
+          <h2>Mode</h2>
+          <div class="mode-grid">
+            <div class="mode-card is-selected" role="radio" aria-checked="true" tabindex="0" data-mode-view="ar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-4l-3-3-3 3H5a2 2 0 0 1-2-2z" /><circle cx="8" cy="11.5" r="2" /><circle cx="16" cy="11.5" r="2" /></svg>
+              <span class="mode-title">Google Cardboard</span>
+              <span class="mode-sub">Stereo view in a headset</span>
+            </div>
+            <div class="mode-card is-disabled" role="radio" aria-checked="false" aria-disabled="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5" /><path d="M11 18.5h2" /></svg>
+              <span class="mode-title">Mobile AR</span>
+              <span class="mode-sub">Coming later</span>
+            </div>
+            <div class="mode-card is-selected mode-wide" role="radio" aria-checked="true" tabindex="0" data-mode-data="live">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5a7 7 0 0 1 14 0M8.5 12.5a3.5 3.5 0 0 1 7 0" /><circle cx="12" cy="13" r="1.4" fill="currentColor" /><path d="M12 15v5" /></svg>
+              <span class="mode-title">Live RTS</span>
+              <span class="mode-sub">Real-time Gainesville buses around your GPS position</span>
+              <span class="live-badge" aria-hidden="true">LIVE</span>
+            </div>
+          </div>
+          <!-- The app reads these selects; the cards above mirror them. -->
+          <select id="view-select" class="visually-hidden" tabindex="-1" aria-hidden="true">
+            <option value="ar">Google Cardboard</option>
+          </select>
+          <select id="data-select" class="visually-hidden" tabindex="-1" aria-hidden="true">
+            <option value="live">Live RTS</option>
+          </select>
+        </section>
+
+        <section class="group enter" style="--i: 3">
+          <h2>Bus finder</h2>
+          <div class="glass card">
+            <label class="field">
+              <span class="field-head"><span>Search radius</span><output id="radius-out" for="radius-input">5 km</output></span>
+              <input id="radius-input" type="range" min="1" max="50" step="1" value="5" />
+              <span class="field-help">How far the app asks RTS for buses. The minimap covers this area.</span>
+            </label>
+            <div class="divider"></div>
+            <label class="field">
+              <span class="field-head"><span>Compass distance</span><output id="compass-out" for="compass-distance">1 mi</output></span>
+              <input id="compass-distance" type="range" min="0.25" max="5" step="0.25" value="1" />
+              <span class="field-help">Buses closer than this get badges on the compass.</span>
+            </label>
+            <label class="toggle">
+              <span><span class="toggle-title">Show all nearby buses</span><span class="field-help">Ignore compass distance; use the full search radius.</span></span>
+              <input id="compass-all" type="checkbox" role="switch" />
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+          </div>
+        </section>
+
+        <section class="group enter" style="--i: 4">
+          <h2>Headset</h2>
+          <div class="glass card">
+            <label class="field">
+              <span class="field-head"><span>Phone</span></span>
+              <select id="preset-select"></select>
+            </label>
+            <div class="divider"></div>
+            <label class="field">
+              <span class="field-head"><span>Lens spacing</span><output id="ipd-out" for="ipd-input">64 mm</output></span>
+              <input id="ipd-input" type="range" min="50" max="80" step="1" value="64" />
+              <span class="field-help">Distance between the Cardboard lens centers.</span>
+            </label>
+            <div class="divider"></div>
+            <label class="field">
+              <span class="field-head"><span>Camera</span></span>
+              <select id="camera-select"></select>
+            </label>
+            <div class="divider"></div>
+            <label class="toggle">
+              <span><span class="toggle-title">Cast to laptop</span><span class="field-help">Open /cast.html on a laptop on the same Wi-Fi.</span></span>
+              <input id="cast-check" type="checkbox" role="switch" />
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+          </div>
+        </section>
+
+        <section class="group enter" style="--i: 5">
+          <h2>In the headset</h2>
+          <div class="glass card">
+            <ul class="gesture-list">
+              <li><span class="key">Double-tap middle</span><span>Unlock calibration</span></li>
+              <li><span class="key">Tap middle</span><span>Next setting: zoom, tilt, spacing, shift, size, FOV, info</span></li>
+              <li><span class="key">Tap left / right</span><span>Adjust the setting</span></li>
+              <li><span class="key">Long-press</span><span>Back to this screen</span></li>
+              <li><span class="key">M · + / − · Esc</span><span>Map, zoom, close (keyboard)</span></li>
+            </ul>
+            <p class="field-help">Turn the phone to landscape. Every iPhone needs size and FOV calibration in the headset.</p>
+          </div>
+        </section>
+      </div>
     </div>
     <div id="stereo" hidden></div>
     <script type="module" src="/src/main.ts"></script>

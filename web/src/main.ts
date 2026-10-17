@@ -12,6 +12,7 @@ import { startBusFeed, watchPosition, REITZ_CENTER, createBusFocus } from './bus
 import type { BusFeed } from './buses';
 import { createStereoView } from './stereo';
 import type { StereoView } from './stereo';
+import { renderPermissions } from './permissions';
 import { createCastCompositor } from './cast/compositor';
 import type { CastCompositor } from './cast/compositor';
 import { startCastPublisher } from './cast/publisher';
@@ -37,6 +38,21 @@ const castCheck = document.getElementById('cast-check') as HTMLInputElement;
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
 const startStatus = document.getElementById('start-status')!;
 const stereoEl = document.getElementById('stereo')!;
+const permList = document.getElementById('perm-list')!;
+
+/** Live readouts and filled tracks for the start-screen sliders. */
+const SLIDERS: [HTMLInputElement, string, (v: number) => string][] = [
+  [radiusInput, 'radius-out', (v) => `${v} km`],
+  [compassInput, 'compass-out', (v) => `${v} mi`],
+  [ipdInput, 'ipd-out', (v) => `${v} mm`],
+];
+function syncSliders() {
+  for (const [input, outId, fmt] of SLIDERS) {
+    const min = Number(input.min), max = Number(input.max), v = Number(input.value);
+    input.style.setProperty('--fill', `${((v - min) / (max - min)) * 100}%`);
+    document.getElementById(outId)!.textContent = input.disabled ? 'All' : fmt(v);
+  }
+}
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
 let view: StereoView | null = null;
@@ -54,6 +70,9 @@ let mapState = createMapState(5);
 function dispatchMap(action: MapAction) { mapState = applyMapAction(mapState, action); renderOverlay(); }
 
 let busFocus = createBusFocus();
+/** When the current selection began, so both eyes animate the card identically. */
+let lastFocusId: string | null = null;
+let focusSinceMs = 0;
 let wakeLock: WakeLockSentinel | null = null;
 let orientationMessage = '';
 let session = 0;
@@ -91,11 +110,13 @@ async function initStartScreen() {
   ipdInput.value = String(settings.ipdMm);
   dataSelect.value = 'live';
   viewSelect.value = settings.viewMode;
-  radiusInput.value = settings.radiusKm == null ? '' : String(settings.radiusKm);
+  radiusInput.value = String(settings.radiusKm ?? 5);
   compassInput.value = String(settings.compassDistanceMiles ?? 1);
   compassAll.checked = settings.compassDistanceMiles === null;
   compassInput.disabled = compassAll.checked;
   castCheck.checked = settings.castEnabled;
+  syncSliders();
+  void renderPermissions(permList);
   await refreshCameraList();
 
   if (DEV) startStatus.textContent = 'Dev mode: ← → turn (hold Shift for 10°).';
@@ -133,8 +154,9 @@ function readSettingsFromForm() {
     compassDistanceMiles: compassAll.checked ? null : (Number(compassInput.value) > 0 && Number.isFinite(Number(compassInput.value)) ? Number(compassInput.value) : 1),
     castEnabled: castCheck.checked,
   };
-  radiusInput.value = settings.radiusKm == null ? '' : String(settings.radiusKm);
+  radiusInput.value = String(settings.radiusKm ?? 5);
   compassInput.value = String(settings.compassDistanceMiles ?? 1);
+  syncSliders();
   saveSettings(settings, 'transitlens-settings-v1');
 }
 
@@ -196,6 +218,8 @@ function frame() {
   const timeMs = performance.now();
   const headingDeg = currentHeading();
   const selectedFocusId = busFocus.update(buses, headingDeg, timeMs);
+  if (selectedFocusId !== lastFocusId) { lastFocusId = selectedFocusId; focusSinceMs = timeMs; }
+  const dwell = busFocus.progress(timeMs);
   mapState = { ...mapState, center: feedState?.position ?? null, responseCenter: feedState?.responseCenter ?? null, headingDeg };
   streetMap?.update({ state: mapState, buses: allBuses, focusId: selectedFocusId, halfFov: lastHalfFovDeg });
   const hud = {
@@ -203,6 +227,7 @@ function frame() {
     status: [feedState?.status ?? '', orientationMessage, orientation?.get()?.northReference === 'magnetic' ? 'Magnetic heading - true-north correction pending' : '', !DEV && headingDeg == null ? 'Compass unavailable - check motion permission' : ''].filter(Boolean).join(' · '),
     timeMs, voice: null,
     selectedFocusId, mapFrame: streetMap?.get(), expandedMap: mapState.mode === 'expanded',
+    focusSinceMs, dwellId: dwell.id, dwellProgress: dwell.t,
   };
   // Selection is already resolved. Every renderer receives the same state.
   const [left, right] = view.eyes;
@@ -229,11 +254,15 @@ function frame() {
 /** The headset's crosshair is a DOM element, so the cast frame draws its own. */
 function drawCastCrosshair(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.save();
-  ctx.strokeStyle = 'rgba(79, 195, 247, 0.9)';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(248, 250, 252, 0.85)';
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(w / 2, h / 2, 12, 0, Math.PI * 2);
+  ctx.arc(w / 2, h / 2, 11, 0, Math.PI * 2);
   ctx.stroke();
+  ctx.fillStyle = '#8ce7db';
+  ctx.beginPath();
+  ctx.arc(w / 2, h / 2, 1.5, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -268,9 +297,10 @@ function renderOverlay() {
   const resume =
     !DEV && !document.fullscreenElement ? '<div class="hud-hint">Rotate to landscape · long-press for settings</div>' : '';
   const toastHtml = toast ? `<div class="toast">${toast}</div>` : '';
-  const controls = `<div class="map-controls"><button data-map="toggle">${mapState.mode === 'expanded' ? 'Close' : 'Map'}</button><button data-map="in" aria-label="Zoom map in">+</button><button data-map="out" aria-label="Zoom map out">−</button></div>`;
+  const calib = mode ? `<div class="calib">${MODES.map((m) => `<span${m === mode ? ' class="on"' : ''}>${m}</span>`).join('')}</div>` : '';
+  const controls = `<div class="map-controls${mapState.mode === 'expanded' ? ' is-expanded' : ''}"><button data-map="toggle" aria-pressed="${mapState.mode === 'expanded'}">${mapState.mode === 'expanded' ? 'Close' : 'Map'}</button><button data-map="in" aria-label="Zoom map in">+</button><button data-map="out" aria-label="Zoom map out">−</button></div>`;
   const credits = '<div class="map-credits" data-map-credit><a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>';
-  const html = `${credits}${mapState.mode === 'compact' ? '<div class="crosshair"></div>' : ''}${controls}${error}${resume}${toastHtml}${debug}`;
+  const html = `${credits}${mapState.mode === 'compact' ? '<div class="crosshair"></div>' : ''}${controls}${error}${resume}${calib}${toastHtml}${debug}`;
   for (const eye of view.eyes) eye.overlay.innerHTML = html;
 }
 
@@ -299,6 +329,7 @@ async function start() {
 
     if (!DEV) orientation = startOrientation(FORCE_ORIENT_EVENTS, () => feed?.get().declinationDeg ?? null);
     busFocus = createBusFocus();
+    lastFocusId = null;
     if (!DEV) gps = watchPosition();
     feed = startBusFeed({
       getPosition: () => DEV ? REITZ_CENTER : gps?.get() ?? null,
@@ -383,6 +414,8 @@ function stop() {
   stereoEl.hidden = true;
   startScreen.hidden = false;
   ipdInput.value = String(settings.ipdMm);
+  syncSliders();
+  void renderPermissions(permList);
   refreshCameraList();
 }
 
@@ -512,7 +545,8 @@ function showToast(text: string) {
   }, 1500);
 }
 
-compassAll.addEventListener('change', () => { compassInput.disabled = compassAll.checked; });
+compassAll.addEventListener('change', () => { compassInput.disabled = compassAll.checked; syncSliders(); });
+for (const [input] of SLIDERS) input.addEventListener('input', syncSliders);
 startBtn.addEventListener('click', start);
 stereoEl.addEventListener('click', onViewTap);
 // Long-press anywhere = back to the start screen (the deliberate way out).
