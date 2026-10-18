@@ -68,9 +68,16 @@ cd web
 npm run phone
 ```
 
-This opens a free Cloudflare quick tunnel (install once: `brew install cloudflared`, or `winget install Cloudflare.cloudflared` on Windows) and prints a QR code.
-Scan it with the iPhone Camera app and open the link in Safari. The laptop's start screen at `http://localhost:5173` shows the same QR code.
-The link changes each time `npm run phone` restarts.
+This opens an HTTPS tunnel and prints a QR code. Scan it with the iPhone Camera app and open the link in Safari.
+The laptop's start screen at `http://localhost:5173` shows the same QR code. A watchdog reopens the tunnel (with a new QR code) if the link stops answering.
+
+- **ngrok (recommended):** used automatically once logged in. Create a free account at ngrok.com, then run `ngrok config add-authtoken <token>` once.
+  Claim your free static domain in the ngrok dashboard and start with `NGROK_DOMAIN=<your-domain> npm run phone` for a link that never changes.
+  ngrok uses the normal HTTPS port, so it works on campus and other managed networks.
+- **Cloudflare quick tunnel (fallback, no account):** `brew install cloudflared` (or `winget install Cloudflare.cloudflared`). The link changes on every restart, and some networks stall it (Cloudflare error 530).
+
+Casting (Settings → Cast to laptop, then `http://localhost:5173/cast.html` on the laptop) tries a direct phone-to-laptop video connection first.
+If that can't connect within a few seconds (phone on cellular, or Wi-Fi that isolates devices), it relays still frames through the tunnel instead.
 
 On the phone, tap **Start AR** and allow camera, location, and motion; iPhone asks for motion only from that tap.
 For an app icon that opens full screen, use **Share → Add to Home Screen** (re-add it after the link changes).
