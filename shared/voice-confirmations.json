@@ -1,0 +1,12 @@
+{
+  "map_expanded": "Map expanded.",
+  "map_compact": "Map returned to compact view.",
+  "set_map_extent": "Map range updated.",
+  "clear_guidance": "Guidance canceled. Back to exploring.",
+  "show_journeys": "Trip options displayed.",
+  "show_routes": "Route and stops highlighted.",
+  "show_bus_stop": "Stop search displayed.",
+  "show_bus_choices": "Choose the vehicle you are riding.",
+  "set_onboard_bus": "Onboard selection updated.",
+  "start_guidance": "Stop guidance displayed."
+}

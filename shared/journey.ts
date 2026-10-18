@@ -1,3 +1,4 @@
+import type { BusObservation } from './bus-query';
 export type GeoPoint = { lat: number; lon: number };
 export type TransitStop = GeoPoint & { id: string; name: string; sequence: number };
 export type RouteOverlay = {
@@ -9,9 +10,11 @@ export type Journey = {
   id: string; routeId: string; routeName: string; color: string; patternId: string; direction: string;
   boardingStop: TransitStop; alightingStop: TransitStop; walkKm: number; rideStops: number;
   overlay: RouteOverlay; activeVehicles: number; prediction: Arrival | null;
+  vehicles?: BusObservation[]; vehicleStatus?: 'available' | 'stale' | 'unavailable'; vehicleFetchedAt?: string | null; onboard?: boolean;
 };
 export type JourneyPlan = {
   query: string; demo: boolean; networkStatus: string; fetchedAt: string | null;
   status: 'available' | 'not_found' | 'unavailable' | 'ambiguous' | 'no_direct_routes';
   scope: string; options: Journey[]; destinations: TransitStop[];
+  recommendedJourneyId?: string | null;
 };

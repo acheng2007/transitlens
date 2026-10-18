@@ -1,0 +1,3 @@
+-After a voice activiated prompt, it should stop listening unless you say hey gemini again.
+-if hey gemini is said in the middle of speech, just interrupt it.
+-make the voice sound less robotic. I dont think the gemini tts is working. it sounds super robotic and not human like at all.

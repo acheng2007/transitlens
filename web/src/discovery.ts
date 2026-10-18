@@ -126,7 +126,8 @@ export function renderTripChoices(host: HTMLElement, state: JourneyState, select
       const row = element('div', 'trip-stop'); row.append(element('span', '', label), element('strong', '', stop.name)); stops.append(row);
     }
     const meta = element('div', 'trip-choice-meta');
-    meta.append(element('span', '', `${Math.round(option.walkKm * 1000)} m to stop`), element('span', '', `${option.rideStops} stops`), element('span', 'trip-arrival', arrivalLabel(option)));
+    meta.append(element('span', '', option.onboard ? 'Already onboard' : `${Math.round(option.walkKm * 1000)} m straight-line to stop`), element('span', '', `${option.rideStops} stops`), element('span', 'trip-arrival', arrivalLabel(option)));
+    if (option.vehicles?.length) meta.append(element('span', '', `Vehicles ${option.vehicles.map(vehicle => vehicle.busId).join(', ')}`));
     const action = element('span', 'trip-choice-action', state.guidance?.id === option.id ? 'Selected · boarding guidance on map' : selected ? 'Chosen trip · show boarding stop' : 'Choose trip & show boarding stop');
     button.append(top, stops, meta, action);
     button.addEventListener('click', () => select(option.id));
@@ -149,7 +150,7 @@ export function updateAssistantFeedback(state: VoiceState, transcript: string | 
   panel.dataset.state = state;
   const feedback = panel.querySelector<HTMLElement>('.assistant-feedback')!;
   feedback.dataset.state = error ? 'error' : state;
-  const labels = { idle: 'Ask about a bus, route, or destination', listening: 'Listening to your question…', thinking: 'Checking transit context…', speaking: 'Speaking · follow up after the reply' };
+  const labels = { idle: 'Ask about a bus, route, or destination', listening: 'Listening to your question…', thinking: 'Checking transit context…', speaking: 'Speaking · say Hey Gemini to ask again' };
   document.getElementById('assistant-activity-label')!.textContent = error ?? labels[state];
   const echo = document.getElementById('assistant-question-echo')!;
   echo.hidden = !transcript; echo.textContent = transcript ? `“${transcript}”` : '';

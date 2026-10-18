@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Path, Query
 from .geo import angle_diff, bearing_deg, haversine_km, in_cone
 from .rts import RTS
 from .network import Network, plan_direct
+from .queries import stop_query, route_details, vehicle_at_stop
 from .transit import APPROXIMATE_NOTE, DIRECT_LIMITATIONS, TransitCatalog
 
 ID_PATTERN = r'^[A-Za-z0-9_.-]+$'
@@ -35,6 +36,11 @@ async def lifespan(app):
 geomag = GeoMag(coefficients_data=WMM_2025)
 
 app = FastAPI(title='TransitLens bus service', lifespan=lifespan)
+
+
+@app.get('/api/buses/health')
+async def health():
+    return {'ok': True, 'hasKey': bool(app.state.rts.key)}
 
 
 @app.get('/api/buses/nearby')
@@ -72,13 +78,75 @@ async def network(demo: bool = False):
 
 @app.get('/api/buses/plan')
 async def plan(destination: str = Query(min_length=1, max_length=120),
-               lat: float = Query(ge=-90, le=90), lon: float = Query(ge=-180, le=180), demo: bool = False):
+               lat: float = Query(ge=-90, le=90), lon: float = Query(ge=-180, le=180), demo: bool = False,
+               onboardBusId: str | None = Query(None, max_length=100)):
     catalog = await app.state.network.snapshot(demo)
-    vehicles = [] if demo else (await app.state.rts.snapshot())[0]
-    result = plan_direct(catalog, destination, lat, lon, vehicles)
+    if demo:
+        from .demo import buses
+        vehicles, fetched, status = buses(), datetime.now(timezone.utc).isoformat(), 'available'
+    else:
+        vehicles, fetched, status = await app.state.rts.snapshot()
+    onboard = next((v for v in vehicles if v['id'] == onboardBusId), None) if onboardBusId else None
+    if onboardBusId and (not onboard or status != 'available' or catalog['status'] != 'available'):
+        raise HTTPException(409, 'The selected onboard bus is no longer available in fresh vehicle data.')
+    result = plan_direct(catalog, destination, lat, lon, vehicles, onboard=onboard)
     # Query a small number of stationary stops, reusing a short prediction cache.
     for option in result['options'][:3]:
+        if option.get('onboard'):
+            continue
         option['prediction'] = await app.state.network.arrivals(option['boardingStop']['id'], option['routeId'], option['direction'], demo)
+        prediction = option['prediction']
+        if not demo and prediction['minutes'] is not None and not any(
+                v['id'] == prediction.get('vehicleId') and v['route'] == option['routeId'] and v.get('patternId') == option['patternId'] for v in vehicles):
+            option['prediction'] = dict(status='unavailable', minutes=None, vehicleId=None, fetchedAt=prediction.get('fetchedAt'),
+                                        label='The predicted vehicle could not be matched to this trip pattern')
+    for option in result['options']:
+        option['vehicles'] = [vehicle_at_stop(v, option['boardingStop'], catalog['patterns']) for v in vehicles
+                              if v['route'] == option['routeId'] and v.get('patternId') == option['patternId']][:6] if status == 'available' else []
+        option['vehicleStatus'] = status
+        option['vehicleFetchedAt'] = fetched
+    # Recommend a nearby boarding stop only with current evidence of upcoming service.
+    viable = [o for o in result['options'] if o.get('onboard') or
+              (o.get('prediction') and o['prediction']['minutes'] is not None) or
+              any(v['progress'] == 'approaching' for v in o['vehicles'])]
+    result['recommendedJourneyId'] = viable[0]['id'] if viable and status == 'available' and catalog['status'] == 'available' else None
+    return result
+
+
+@app.get('/api/buses/stop-distance')
+async def bus_stop_distance(stop: str = Query(min_length=1, max_length=120),
+                            routeId: str | None = Query(None, max_length=30, pattern=ID_PATTERN),
+                            busId: str | None = Query(None, max_length=100, pattern=ID_PATTERN), demo: bool = False):
+    network = await app.state.network.snapshot(demo)
+    if demo:
+        from .demo import buses
+        vehicles, fetched, status = buses(), datetime.now(timezone.utc).isoformat(), 'available'
+    else:
+        vehicles, fetched, status = await app.state.rts.snapshot()
+    result = stop_query(network, vehicles, stop, routeId, busId)
+    result.update(vehicleStatus=status, vehicleFetchedAt=fetched)
+    if result['stop'] and status == 'available':
+        for vehicle in result['vehicles'][:3]:
+            pattern = next((p for p in result['routes'] if p['patternId'] == vehicle['patternId'] and p['routeId'] == vehicle['routeId']), None)
+            if pattern and vehicle['progress'] not in ('passed', 'not_served'):
+                vehicle['prediction'] = await app.state.network.arrivals(result['stop']['id'], vehicle['routeId'], pattern['direction'], demo, vehicle['busId'])
+    return result
+
+
+@app.get('/api/buses/route-details')
+async def bus_route_details(routeId: str | None = Query(None, max_length=30, pattern=ID_PATTERN),
+                            busId: str | None = Query(None, max_length=100, pattern=ID_PATTERN), demo: bool = False):
+    network = await app.state.network.snapshot(demo)
+    if demo:
+        from .demo import buses
+        vehicles = buses()
+        status = 'available'
+    else:
+        vehicles, _, status = await app.state.rts.snapshot()
+    result = route_details(network, vehicles, routeId, busId)
+    result['vehicleStatus'] = status
+    if status != 'available' or network['status'] != 'available':
+        result['nextStops'] = []
     return result
 async def catalog(required=False):
     """Load the catalog. Lookups by ID require data, so absence is not reported as an unknown ID."""
@@ -123,7 +191,15 @@ async def transit_pattern(patternId: str = Path(min_length=1, max_length=32, pat
 
 @app.get('/api/transit/stops/nearby')
 async def transit_nearby_stops(lat: float = Query(ge=-90, le=90), lon: float = Query(ge=-180, le=180),
-                               radiusKm: float = Query(0.8, gt=0, le=5), limit: int = Query(20, ge=1, le=50)):
+                               radiusKm: float = Query(0.8, gt=0, le=5), limit: int = Query(20, ge=1, le=50), demo: bool = False):
+    if demo:
+        network = await app.state.network.snapshot(True)
+        stops = {s['id']: s for p in network['patterns'] for s in p['stops']}
+        nearby = [{**s, 'distanceKm': haversine_km(lat, lon, s['lat'], s['lon']),
+                   'bearingDeg': bearing_deg(lat, lon, s['lat'], s['lon'])} for s in stops.values()]
+        nearby = sorted((s for s in nearby if s['distanceKm'] <= radiusKm), key=lambda s: (s['distanceKm'], s['id']))[:limit]
+        return dict(status='available', fetchedAt=network.get('fetchedAt'), demo=True,
+                    center=dict(lat=lat, lon=lon), stops=nearby)
     transit = await catalog()
     return transit.envelope(center=dict(lat=lat, lon=lon), stops=transit.nearby_stops(lat, lon, radiusKm, limit))
 

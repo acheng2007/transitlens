@@ -1,0 +1,12 @@
+# Local fixture-only verification. No provider keys or inference calls.
+services:
+  bus:
+    image: transitlens-bus:latest
+    environment:
+      RTS_API_KEY: ""
+  voice:
+    image: transitlens-voice:latest
+    environment:
+      GEMINI_API_KEY: ""
+  web:
+    image: transitlens-web:latest

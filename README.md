@@ -5,16 +5,21 @@ The existing camera, stereo layout, compass, pinhole projection, calibration con
 
 ## Current experience
 
-The web app defaults to Live RTS, the full-screen Phone view, and a 5 km radius; Google Cardboard is one tap away on the start screen.
+For production packaging and verification, see [deployment preparation](docs/DEPLOYMENT.md).
+For the simpler managed setup without Docker, see [Render hosting](docs/MANAGED_HOSTING.md).
+
+The web app defaults to Live RTS, the full-screen Phone view, and a 3 mile search radius; Google Cardboard is one tap away on the start screen.
 iPhone Safari is the primary target. The Phone view works held upright or sideways, and the app can be added to the Home Screen to open full screen.
 TransitLens combines live RTS identification, an interactive street map, and a Gemini transit copilot.
 Look toward a route marker, hold your gaze, then say "Hey Gemini, where is this bus going?"
 Ask for routes to a destination, highlight a route, select a trip and find its stationary boarding stop.
 Both eyes and casting share the same selection, route overlays, trip and voice state.
+Cardboard uses a button-free HUD and a voice-opened transparent floating map; see [Cardboard HUD behavior and verification](docs/CARDBOARD_HUD.md).
 The server-side bus service retrieves and normalizes vehicles; the HUD shows route markers, dwell-selected transit cards, and nearby buses on the persistent minimap.
 Missing transit metadata stays unknown, and no arrival estimates are invented.
 
-The assistant uses server-side Gemini function calling, with browser speech recognition/synthesis and a short follow-up listening window.
+The assistant uses server-side structured Gemini intent responses with deterministic transit queries, browser speech recognition, and one question per wake activation.
+Substantive Gemini and local transit answers use Gemini Flash-Lite TTS (Sulafat) with warm conversational delivery; quick confirmations and remote-audio failures use the best available browser voice.
 "Read the bus sign" sends one small camera still to Gemini on request; regular questions use transit context only.
 Route planning checks real ordered stop patterns and direction, with a boarding stop within 0.8 km straight-line distance.
 Available arrivals are stop/route/direction-specific RTS predictions, not estimates from vehicle distance.
@@ -37,7 +42,13 @@ Quick start for all three services:
 
 The script installs isolated service dependencies, creates ignored environment files when absent, starts bus-service on 8003 and voice-service on 8002, and starts Vite.
 Set `RTS_API_KEY` in `bus-service/.env` and `GEMINI_API_KEY` in `voice-service/.env`, then restart.
-The default model is `gemini-3.8-flash`; override `GEMINI_MODEL` for your account.
+The default text model is `gemini-3.5-flash-lite`, with model fallback disabled.
+Use a Gemini API key from a project marked Free tier in AI Studio for free API usage; a model setting cannot change the project's billing plan.
+Override `GEMINI_MODEL` for your account; automatic retries and model fallback are disabled.
+Exact map controls use no Gemini calls; most questions use one text call, with at most two for explicit explanations.
+Provider budgets are 12 text calls and, by default, ten TTS generations per rolling minute per process; approved audio has a bounded cache.
+Set `GEMINI_TTS_GENERATIONS_PER_MINUTE` in the voice service to configure the speech budget (1-120).
+The assistant rejects unrelated and mixed requests, including coding, before action preparation; see [voice-service guardrails](voice-service/README.md#scope-quota-and-diagnostics).
 No provider credential belongs in browser code.
 For manual service setup, follow the instructions below.
 
@@ -104,17 +115,21 @@ Without heading it explicitly uses north up.
 
 The bottom circular map uses MapLibre and OpenFreeMap streets with reported live vehicle positions, without road snapping.
 It follows GPS and heading, independently of compass filtering.
-Map opens a translucent expanded view in both eyes and suppresses the focused card.
+Map opens a nearly full-screen glass panel in Cardboard and Phone mode and suppresses the focused card.
+The panel animates open and closed, follows larger head turns smoothly, and keeps compass and voice feedback above the map.
+Reduced-motion preferences skip the opening and closing animation.
 Close returns to the compact map and preserves zoom.
 Use the duplicated Map/Close and +/− buttons, or M, +/−, and Escape on a keyboard.
 Escape closes the expanded map before leaving for settings.
 Map controls do not trigger calibration.
 
-The saved Compass distance (miles) defaults to 1 mile (1.609344 km).
+Search radius and compass distance are both edited in miles.
+The saved compass distance defaults to 1 mile.
 All nearby disables this filter.
 The limit applies to individual compass buses, edge arrows, dwell selection, and cards, while the map keeps the entire fetched feed.
 Increasing this limit does not fetch beyond Search radius.
-The map initially covers that search radius; each zoom changes its center-to-edge extent by a factor of two within 0.1-400 km.
+The map initially covers that search radius; each zoom changes its center-to-edge extent by a factor of two.
+Map range labels use miles to match the settings.
 Without GPS it waits for location; without compass it uses north up and labels the limitation.
 Tile/WebGL failures show a labeled radar fallback without interrupting the compass or camera.
 Roads require network access.
@@ -127,14 +142,26 @@ Direct route discovery and available arrival predictions are implemented; transf
 
 ## Ask Gemini
 
+Natural routing supports bus-to-stop distances, route descriptions, next stops, direct-trip recommendations, and an explicit onboard selection.
+Try "How far is bus 1 from Tigert Hall stop?", "Take me to Reitz Union", "Tell me more about that route", or "I'm on route 1".
+Ambiguous stops and multiple vehicles require a choice; route distance, straight-line distance, and verified arrivals remain distinct.
+Supported complete commands also work through labeled local transit tools without consuming Gemini quota.
+See [natural routing](docs/NATURAL_ROUTING.md) for APIs, follow-ups, and limitations.
+
 Enable **Hey Gemini + spoken replies** on the start screen.
-Hold your gaze on a bus marker and ask "Where is this bus going?", "Is it delayed?", or "How full is it?"
+Hold your gaze on a bus marker and ask "Hey Gemini, where is this bus going?", "Is it delayed?", or "How full is it?"
 Say "Show routes to Shands", "Highlight route 38", "Take the first option", "Close the map", or "Cancel guidance."
-A seven-second follow-up listening window lets you continue without repeating the wake phrase.
+Start each spoken question with "Hey Gemini".
+Clarification replies can be short, such as “route 38” or “the second stop”; the assistant keeps the original question pending for up to five minutes.
+Map commands preserve that question, and “never mind” cancels it.
+After one answer, the assistant returns to wake-only standby and ignores ordinary background conversation.
+Say "Hey Gemini" during an answer to interrupt it and ask a new question.
+Gemini speech covers normal answers, clarifications and successful confirmations; "Gemini voice" or "Device voice" identifies the playback path.
+Device speech remains the fallback for unavailable Gemini audio.
 Tap the voice control or press Space on desktop to listen directly.
 **Ask** opens typed prompts and selectable trip cards when speech recognition is unavailable.
 
-Routes and stop coordinates come from bus-service, and Gemini receives compact grounded tool results rather than computing reachability or geometry.
+Routes and stop coordinates come from bus-service, and Gemini receives compact grounded transit results rather than computing reachability or geometry.
 Ambiguous destination names require a specific stop choice.
 A selected vehicle's exact destination coverage requires a matching pattern ID, not merely the same route number.
 Stale/partial catalogs and unavailable predictions remain explicit.

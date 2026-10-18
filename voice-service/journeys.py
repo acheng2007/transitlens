@@ -40,6 +40,55 @@ class Arrival(Model):
     label: str
 
 
+class BusObservation(Point):
+    busId: str = Field(min_length=1, max_length=100)
+    routeId: str = Field(min_length=1, max_length=30)
+    patternId: str | None
+    destination: str | None
+    distanceKm: float = Field(ge=0, le=500)
+    alongRouteKm: float | None = Field(default=None, ge=0, le=500)
+    progress: Literal['approaching', 'passed', 'not_served', 'unknown']
+    prediction: Arrival | None = None
+
+
+class BusStopResult(Model):
+    query: str = Field(min_length=1, max_length=120)
+    routeId: str | None
+    busId: str | None
+    demo: bool
+    networkStatus: Literal['available', 'partial', 'stale', 'unavailable']
+    fetchedAt: str | None
+    vehicleStatus: Literal['available', 'stale', 'unavailable']
+    vehicleFetchedAt: str | None
+    status: Literal['available', 'not_found', 'ambiguous', 'unavailable']
+    stops: list[Stop] = Field(max_length=8)
+    stop: Stop | None
+    vehicles: list[BusObservation] = Field(max_length=6)
+    routes: list[Overlay] = Field(max_length=6)
+
+
+class BusChoice(Point):
+    id: str = Field(min_length=1, max_length=100)
+    routeId: str = Field(min_length=1, max_length=30)
+    patternId: str | None
+    destination: str | None
+
+
+class ShowBusStop(Model):
+    type: Literal['show_bus_stop'] = 'show_bus_stop'
+    result: BusStopResult
+
+
+class ShowBusChoices(Model):
+    type: Literal['show_bus_choices'] = 'show_bus_choices'
+    buses: list[BusChoice] = Field(min_length=1, max_length=6)
+
+
+class SetOnboardBus(Model):
+    type: Literal['set_onboard_bus'] = 'set_onboard_bus'
+    bus: BusChoice | None
+
+
 class Journey(Model):
     id: str = Field(min_length=1, max_length=300)
     routeId: str
@@ -54,6 +103,10 @@ class Journey(Model):
     overlay: Overlay
     activeVehicles: int = Field(ge=0)
     prediction: Arrival | None = None
+    vehicles: list[BusObservation] = Field(default_factory=list, max_length=6)
+    vehicleStatus: Literal['available', 'stale', 'unavailable'] = 'unavailable'
+    vehicleFetchedAt: str | None = None
+    onboard: bool = False
 
 
 class Plan(Model):
@@ -65,6 +118,7 @@ class Plan(Model):
     scope: str
     options: list[Journey] = Field(max_length=6)
     destinations: list[Stop] = Field(max_length=8)
+    recommendedJourneyId: str | None = None
 
 
 class ShowJourneys(Model):
@@ -100,6 +154,10 @@ JOURNEY_TOOLS = [
 ]
 
 
+class TransitQueryError(ValueError):
+    """A safe, user-facing failure from deterministic transit queries."""
+
+
 class Copilot:
     def __init__(self, context, base_url):
         self.context = context
@@ -109,14 +167,17 @@ class Copilot:
     async def get(self, path, **params):
         async with httpx.AsyncClient(timeout=8) as client:
             response = await client.get(self.base_url + path, params={**params, 'demo': self.context.dataMode == 'demo'})
+        if response.status_code == 409:
+            raise TransitQueryError('The selected onboard bus is no longer available in fresh vehicle data. Select your bus again.')
         response.raise_for_status()
         return response.json()
 
     async def find(self, query):
         if self.context.position is None:
-            raise ValueError('Waiting for location. No trip was planned.')
+            raise TransitQueryError('Waiting for location. No trip was planned.')
+        params = {'onboardBusId': self.context.onboardBusId} if getattr(self.context, 'onboardBusId', None) else {}
         data = await self.get('/api/buses/plan', destination=query,
-                              **self.context.position.model_dump())
+                              **self.context.position.model_dump(), **params)
         self.plan = Plan.model_validate(data)
         return self.plan
 
@@ -135,7 +196,7 @@ class Copilot:
             network = await self.get('/api/buses/network')
             routes = [Overlay.model_validate(p) for p in network['patterns'] if p['routeId'] == args['routeId']][:6]
             if not routes:
-                raise ValueError('That route is not present in the available RTS patterns.')
+                raise TransitQueryError('That route is not present in the available RTS patterns.')
             return {'routeId': args['routeId'], 'patterns': [p.id for p in routes], 'status': network['status']}, [ShowRoutes(routes=routes)]
         if name == 'guide_to_stop':
             if set(args) != {'optionId'} or not isinstance(args['optionId'], str):
@@ -144,7 +205,7 @@ class Copilot:
                 await self.find(self.context.destinationQuery)
             option = next((o for o in self.plan.options if o.id == args['optionId']), None) if self.plan else None
             if not option:
-                raise ValueError('This option is no longer available. Search the destination again.')
+                raise TransitQueryError('This option is no longer available. Search the destination again.')
             return {'boardingStop': option.boardingStop.name, 'route': option.routeId,
                     'direction': option.direction, 'guidance': 'Approximate bearing only. No verified pedestrian path.'}, [StartGuidance(journey=option)]
         if name == 'cancel_guidance' and not args:
@@ -161,7 +222,8 @@ class Copilot:
             _, actions = await self.call('highlight_route', {'routeId': route[1]})
             return f'Route {route[1]} is ready.', actions
         query = re.search(r'(?:routes? to|(?:get|take|guide) me to|go to|goes to|going to)\s+(.+)', q)
-        if query:
+        selected_stop = re.fullmatch(r'(?:guide|take) me to (?:the )?selected (?:boarding )?stop', q)
+        if query and not selected_stop:
             plan = await self.find(query[1])
             actions = [ShowJourneys(plan=plan)]
             if re.search(r'(?:get|take|guide) me to', q) and plan.options:
@@ -176,7 +238,7 @@ class Copilot:
         index = re.search(r'\b(first|second|third|best)\b', q)
         if choice or index or re.search(r'guide.*(?:stop|there)|take.*(?:one|route)', q):
             if not self.context.destinationQuery:
-                raise ValueError('Choose a destination first, for example get me to Shands.')
+                raise TransitQueryError('Choose a destination first, for example get me to Shands.')
             plan = await self.find(self.context.destinationQuery)
             position = {'first': 0, 'best': 0, 'second': 1, 'third': 2}.get(index[1], 0) if index else 0
             selected = choice[1] if choice else self.context.selectedJourneyId or (plan.options[position].id if len(plan.options) > position else '')

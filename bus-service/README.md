@@ -137,6 +137,10 @@ python -m unittest discover -s tests -v
 
 ## Route discovery and arrivals
 
+The companion `/api/buses/stop-distance` and `/api/buses/route-details` endpoints support bus-to-stop queries and route/next-stop descriptions.
+The planner accepts `onboardBusId` and supplies matched vehicles and a recommendation grounded in current service evidence.
+See [natural routing](../docs/NATURAL_ROUTING.md) for parameters, distance semantics, conservative progress matching, and limitations.
+
 `GET /api/buses/network?demo=false` returns normalized ordered RTS patterns, shapes and stops.
 The catalog is cached for an hour, including partial snapshots, so unavailable patterns do not cause a request storm.
 A failed refresh retains stale patterns with an explicit status.

@@ -1,0 +1,17 @@
+FROM node:24-alpine AS build
+WORKDIR /app
+COPY web/package*.json ./web/
+RUN cd web && npm ci
+COPY web/ ./web/
+COPY shared/ ./shared/
+RUN cd web && npm run build
+
+FROM node:24-alpine
+ENV NODE_ENV=production PORT=8080
+WORKDIR /app/web
+COPY --from=build --chown=node:node /app/web/dist ./dist
+COPY --from=build --chown=node:node /app/web/server ./server
+COPY --from=build --chown=node:node /app/web/package.json ./package.json
+USER node
+EXPOSE 8080
+CMD ["node", "server/production.ts"]

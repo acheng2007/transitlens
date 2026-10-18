@@ -2,10 +2,14 @@
 
 import { busCard, busFields, statusTag } from './format';
 import { bearingDeg, haversineKm, halfFovDeg, normalizeDeg, projectX, signedDiffDeg } from './geo';
+import { formatMiles } from './map-state';
 import type { MapFrame } from './street-map';
 import type { Bus, Position } from './buses';
 import type { JourneyState } from './journey-state';
 import { arrivalLabel } from './journey-state';
+import { drawMapCrop, drawFloatingMapLayers } from './floating-map';
+import { glassBounds, mapPanelRect } from './map-panel';
+import type { MapPanelFrame, SafeInsets } from './map-panel';
 import type { VoiceState } from './voice';
 
 /** What the voice subtitles show. Timing (when to clear the answer) is handled by main.ts. */
@@ -15,6 +19,7 @@ export type VoiceHud = {
   answer: string | null;
   error: string | null;
   wakeEnabled?: boolean;
+  speechLabel?: string | null;
 };
 
 /** Buses the viewer is looking at this frame (offsetDeg filled in), for voice context. */
@@ -34,6 +39,8 @@ export type HudState<T = Bus> = {
   selectedFocusId?: string | null;
   mapFrame?: MapFrame | null;
   expandedMap?: boolean;
+  mapPanel?: MapPanelFrame;
+  safeInsets?: SafeInsets;
   journey?: JourneyState;
   position?: Position | null;
   assistantSource?: string;
@@ -145,20 +152,67 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, s: 
   ctx.clearRect(0, 0, w, h);
   ctx.textBaseline = 'middle';
   T = PALETTES[s.theme ?? 'light'];
-  const result = drawBuses(ctx, w, h, s);
+  let result: HudResult<Bus> = NO_BUSES;
   // Transit map frames remain independent of compass filtering and voice status.
   if (s.mapFrame) {
-    const selected = s.selectedFocusId ? (s.buses.find((p) => p.id === s.selectedFocusId) as Bus | undefined) ?? null : null;
-    const withVoice = !!s.journey?.plan || !!s.journey?.guidance || (!!s.voice && (s.voice.state !== 'idle' || !!s.voice.answer || !!s.voice.error));
-    drawStreetMap(ctx, w, h, s.mapFrame, selected && 'route' in selected ? selected : null, withVoice);
+    drawStreetMap(ctx, w, h, s.mapFrame, s);
   }
   else if (s.headingDeg != null) {
-    drawRadar(ctx, w, h, s, s.headingDeg, result.focus?.id ?? null);
+    drawRadar(ctx, w, h, s, s.headingDeg, s.selectedFocusId ?? null);
   }
-  if (s.selectedFocusId !== undefined) drawStatus(ctx, w, h, s.status);
-  if (s.journey) drawJourney(ctx, w, h, s);
-  if (s.voice) drawVoice(ctx, w, h, s.voice, s.timeMs);
+  result = drawBuses(ctx, w, h, s);
+  const floating = !!s.expandedMap;
+  if (s.selectedFocusId !== undefined) drawStatus(ctx, w, h, s.status, floating ? 0.985 : STATUS_Y);
+  if (floating) drawFloatingSummary(ctx, w, h, s, result.focus);
+  else if (s.journey) drawJourney(ctx, w, h, s);
+  if (s.voice) {
+    if (!s.handheld) drawCardboardVoice(ctx, w, h, s.voice, floating);
+    else drawVoice(ctx, w, h, s.voice, s.timeMs);
+  }
   return result;
+}
+
+/** One concise context line, leaving the full map clear. */
+function drawFloatingSummary(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState<Bus>, focus: Bus | null) {
+  const state = s.journey;
+  const trip = state?.guidance;
+  const stop = state?.busStop;
+  const plan = state?.plan;
+  const text = trip ? `${trip.onboard ? 'GET OFF' : 'BOARD'} ${trip.routeId} · ${(trip.onboard ? trip.alightingStop : trip.boardingStop).name}`
+    : stop ? `${stop.stop ? `STOP ${stop.stop.id}` : 'WHICH STOP?'} · ${stop.stop?.name ?? stop.query}`
+    : plan ? plan.options.length ? `${plan.options.length} DIRECT OPTIONS · Say “take the first option”` : plan.status === 'ambiguous' ? 'WHICH DESTINATION? Name a stop' : 'NO DIRECT TRIP'
+    : focus && 'route' in focus ? `ROUTE ${focus.route} · ${focus.destination ?? 'Destination unknown'}`
+    : state?.onboardBus ? `ONBOARD ROUTE ${state.onboardBus.routeId}` : '';
+  ctx.save();
+  ctx.font = `700 ${fs(10)}px ${FONT}`;
+  if (text) label(ctx, w / 2, h * 0.735, ellipsize(ctx, text, w * 0.84), fs(10), T.text, 'center', true);
+  if (trip) label(ctx, w / 2, h * 0.755, trip.onboard ? 'ONBOARD · ALIGHTING STOP' : 'STOP BEARING · NOT A WALKING PATH', fs(7), T.muted, 'center');
+  ctx.restore();
+}
+
+/** Headset feedback is passive and never becomes a touch control. */
+function drawCardboardVoice(ctx: CanvasRenderingContext2D, w: number, h: number, voice: VoiceHud, floating: boolean) {
+  const active = voice.state !== 'idle';
+  if (active) label(ctx, w / 2, h * 0.055, voice.state === 'speaking' ? (voice.speechLabel ?? 'PREPARING SPEECH').toUpperCase() : voice.state.toUpperCase(), fs(9), T.accent, 'center', true);
+  const text = voice.error ?? voice.answer ?? (voice.state === 'thinking' || voice.state === 'listening' ? voice.transcript : null);
+  if (!text) return;
+  ctx.save();
+  const maxW = w * (floating ? 0.84 : 0.40);
+  const cx = floating ? w / 2 : w * 0.71;
+  const fontSize = floating ? Math.min(fs(11), h * 0.026) : fs(11);
+  ctx.font = `500 ${fontSize}px ${FONT}`;
+  const all = wrapLines(ctx, text, maxW - 12);
+  const lines = all.slice(0, 3);
+  if (all.length > 3) lines[2] = ellipsize(ctx, `${lines[2]}…`, maxW - 12);
+  const lineH = fontSize + 2;
+  const y = floating ? h * 0.77 : h * VOICE_Y - lines.length * lineH;
+  const panelH = lines.length * lineH + 6;
+  roundRect(ctx, cx - maxW / 2, y, maxW, panelH, 5);
+  ctx.fillStyle = T.surface; ctx.fill();
+  ctx.fillStyle = voice.error ? T.warning : T.text;
+  ctx.textAlign = 'left';
+  lines.forEach((line, i) => ctx.fillText(line, cx - maxW / 2 + 6, y + 3 + lineH * (i + 0.5)));
+  ctx.restore();
 }
 
 /** The trip result is shared across every eye and casting. */
@@ -167,17 +221,18 @@ function drawJourney(ctx: CanvasRenderingContext2D, w: number, h: number, s: Hud
   const cx = w * 0.71;
   if (state.guidance) {
     const j = state.guidance;
-    label(ctx,cx,h*0.38,`BOARD ROUTE ${j.routeId}`,fs(15),'#b5ff67','center',true);
+    label(ctx,cx,h*0.38,`${j.onboard ? 'GET OFF' : 'BOARD'} ROUTE ${j.routeId}`,fs(15),'#b5ff67','center',true);
     ctx.font=`${fs(11)}px ${FONT}`;
-    const names=wrapLines(ctx,j.boardingStop.name,w*0.39).slice(0,2);
+    const targetStop = j.onboard ? j.alightingStop : j.boardingStop;
+    const names=wrapLines(ctx,targetStop.name,w*0.39).slice(0,2);
     names.forEach((line,i)=>label(ctx,cx,h*0.41+i*fs(14),line,fs(11),COLORS.text,'center'));
-    label(ctx,cx,h*0.48,arrivalLabel(j),fs(11),'#ffc94d','center');
+    label(ctx,cx,h*0.48,j.onboard ? 'ONBOARD SELECTION' : arrivalLabel(j),fs(11),'#ffc94d','center');
     if (s.position) {
-      const distance=haversineKm(s.position.lat,s.position.lon,j.boardingStop.lat,j.boardingStop.lon);
-      const bearing=bearingDeg(s.position.lat,s.position.lon,j.boardingStop.lat,j.boardingStop.lon);
+      const distance=haversineKm(s.position.lat,s.position.lon,targetStop.lat,targetStop.lon);
+      const bearing=bearingDeg(s.position.lat,s.position.lon,targetStop.lat,targetStop.lon);
       const off=s.headingDeg===null?null:signedDiffDeg(bearing,s.headingDeg);
-      const direction=off===null ? `${Math.round(bearing)}° true` : Math.abs(off)<8?'AHEAD':off<0?'TURN LEFT':'TURN RIGHT';
-      label(ctx,cx,h*0.52,`${Math.round(distance*1000)} m · ${direction}`,fs(14),'#b5ff67','center',true);
+      const direction=off===null || j.onboard ? `${Math.round(bearing)}° true` : Math.abs(off)<8?'AHEAD':off<0?'TURN LEFT':'TURN RIGHT';
+      label(ctx,cx,h*0.52,`${formatMiles(distance)} · ${direction}`,fs(14),'#b5ff67','center',true);
       label(ctx,cx,h*0.55,'STOP BEARING · NOT A WALKING PATH',fs(7),COLORS.text,'center');
       // Bearing diamond is constrained to the compass, leaving the central view clear.
       if (off!==null) {
@@ -185,17 +240,30 @@ function drawJourney(ctx: CanvasRenderingContext2D, w: number, h: number, s: Hud
         const y=h*0.18;
         ctx.save();ctx.translate(x,y);ctx.rotate(Math.PI/4);ctx.fillStyle='#b5ff67';
         ctx.shadowColor='#b5ff67';ctx.shadowBlur=12;ctx.fillRect(-5,-5,10,10);ctx.restore();
-        label(ctx,x,y-fs(15),'BOARD',fs(8),'#b5ff67','center',true);
+        label(ctx,x,y-fs(15),j.onboard ? 'GET OFF' : 'BOARD',fs(8),'#b5ff67','center',true);
       }
     }
+  } else if (state.busStop) {
+    const r = state.busStop;
+    label(ctx,cx,h*0.38,r.stop ? `STOP ${r.stop.id}` : r.status === 'ambiguous' ? 'WHICH STOP?' : 'STOP LOOKUP',fs(13),'#ffc94d','center',true);
+    ctx.font=`${fs(11)}px ${FONT}`;
+    wrapLines(ctx,r.stop?.name ?? r.query,w*0.39).slice(0,2).forEach((line,i)=>label(ctx,cx,h*0.41+i*fs(13),line,fs(11),COLORS.text,'center'));
+    r.vehicles.slice(0,2).forEach((v,i)=>{
+      label(ctx,cx,h*(0.49+i*0.045),`${v.routeId} · ${formatMiles(v.distanceKm)} straight-line${r.vehicleStatus === 'available' && v.progress === 'passed' ? ' · PASSED' : ''}`,fs(10),COLORS.text,'center');
+    });
+    if (r.vehicleStatus !== 'available') label(ctx,cx,h*0.59,'POSITION DATA UNAVAILABLE OR STALE',fs(8),'#ffc94d','center');
   } else if (state.plan) {
     const p=state.plan;
     label(ctx,cx,h*0.38,p.status==='ambiguous'?'WHICH DESTINATION?':p.options.length?`${p.options.length} DIRECT OPTIONS`:'NO DIRECT TRIP',fs(12),'#b5ff67','center',true);
     p.options.slice(0,3).forEach((j,i)=>{
-      label(ctx,cx,h*(0.43+i*0.045),`${i+1} · ROUTE ${j.routeId} · ${j.rideStops} stops`,fs(11),j.color,'center',true);
+      label(ctx,cx,h*(0.43+i*0.045),`${i+1} · ROUTE ${j.routeId} · ${j.rideStops} ${j.rideStops === 1 ? 'stop' : 'stops'}`,fs(11),j.color,'center',true);
     });
     if (p.options.length) label(ctx,cx,h*0.57,'Say “take the first option”',fs(9),COLORS.text,'center');
     if (p.status==='ambiguous') label(ctx,cx,h*0.44,'Name a stop to narrow the search',fs(9),COLORS.text,'center');
+  } else if (state.onboardBus) {
+    label(ctx,cx,h*0.38,`ONBOARD ROUTE ${state.onboardBus.routeId}`,fs(13),'#b5ff67','center',true);
+    label(ctx,cx,h*0.43,`Vehicle ${state.onboardBus.id}`,fs(11),COLORS.text,'center');
+    label(ctx,cx,h*0.48,'Tell me your destination',fs(10),COLORS.text,'center');
   }
   if (s.assistantSource) label(ctx,w/2,h*0.12,s.assistantSource.toUpperCase(),fs(8),s.demo?'#ffc94d':'#81d9ed','center');
 }
@@ -292,7 +360,7 @@ function drawRadar(
   ctx.restore();
 
   // Range below the disc, outside the ring of N/E/S/W labels.
-  label(ctx, cx, cy + r + fs(20), `${range} km`, fs(8), 'rgba(255,255,255,0.75)', 'center');
+  label(ctx, cx, cy + r + fs(20), formatMiles(range), fs(8), 'rgba(255,255,255,0.75)', 'center');
 }
 
 /** Phone view: compass position (fraction of height, with a floor that leaves room for stacked badges) and width. */
@@ -301,7 +369,7 @@ const MOBILE_COMPASS_MIN_PX = 72;
 const MOBILE_COMPASS_WIDTH = 0.9;
 
 function drawBuses(ctx: CanvasRenderingContext2D, w: number, h: number, s: HudState<Bus>): HudResult<Bus> {
-  const barY = s.mobile ? Math.max(h * MOBILE_COMPASS_Y, MOBILE_COMPASS_MIN_PX) : h * COMPASS_Y;
+  const barY = s.mobile ? Math.max(h * MOBILE_COMPASS_Y, MOBILE_COMPASS_MIN_PX) : h * (s.expandedMap ? 0.12 : COMPASS_Y);
   const x0 = (w * (1 - (s.mobile ? MOBILE_COMPASS_WIDTH : COMPASS_WIDTH))) / 2;
   const x1 = w - x0;
 
@@ -395,7 +463,7 @@ function drawVoice(ctx: CanvasRenderingContext2D, w: number, h: number, v: Voice
   const pulse = 0.5 + 0.5 * Math.sin(timeMs / 180);
   if (v.state === 'listening') pill(ctx, cx, bottom, 'Listening…', `rgba(255, 82, 82, ${0.5 + 0.5 * pulse})`);
   else if (v.state === 'thinking') pill(ctx, cx, bottom, `Thinking${'.'.repeat(1 + (Math.floor(timeMs / 300) % 3))}`, COLORS.hud);
-  else if (v.state === 'speaking') pill(ctx, cx, bottom, 'Gemini', COLORS.focus);
+  else if (v.state === 'speaking') pill(ctx, cx, bottom, v.speechLabel ?? 'Preparing speech…', COLORS.focus);
   else if (!v.answer && !v.error && timeMs - voiceStartMs < HINT_MS) {
     label(ctx, cx, bottom, v.wakeEnabled === false ? 'Tap Ask Gemini to type' : 'Say “Hey Gemini…”', fs(10), 'rgba(255,255,255,0.6)', 'center');
   }
@@ -447,10 +515,7 @@ const BADGE_ROW_GAP = fs(4);
 const routeFont = (focus: boolean) => `800 ${focus ? fs(16) : fs(12.5)}px ${FONT}`;
 const distFont = `600 ${fs(9.5)}px ${FONT}`;
 /** Compact distance for labels: "0.3 mi" (one decimal under 10 mi). */
-const shortMiles = (km: number) => {
-  const mi = km / 1.609344;
-  return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
-};
+const shortMiles = formatMiles;
 
 /** Label layout: route number (+ distance unless focused, where the card shows it). */
 function badgeMetrics(ctx: CanvasRenderingContext2D, b: Bus, focus: boolean) {
@@ -789,7 +854,7 @@ function drawBusEdgeArrow(ctx: CanvasRenderingContext2D, barY: number, x0: numbe
 }
 
 /** Feed/sensor status as one compact pill near the bottom; warnings get an amber dot. */
-function drawStatus(ctx: CanvasRenderingContext2D, w: number, h: number, status: string) {
+function drawStatus(ctx: CanvasRenderingContext2D, w: number, h: number, status: string, position = STATUS_Y) {
   const lines = wrapStatus(status);
   if (!lines.length) return;
   const warn = /unavailable|denied|waiting|pending|accuracy/i.test(status);
@@ -802,7 +867,7 @@ function drawStatus(ctx: CanvasRenderingContext2D, w: number, h: number, status:
   const pw = Math.min(w * 0.84, tw + fs(22) + dot);
   const ph = lines.length * lineH + 9;
   const x = (w - pw) / 2;
-  const y = h * STATUS_Y - ph / 2;
+  const y = h * position - ph / 2;
   ctx.shadowColor = T.cardShadow;
   ctx.shadowBlur = 6;
   roundRect(ctx, x, y, pw, ph, Math.min(ph / 2, fs(12)));
@@ -869,128 +934,55 @@ function wrapStatus(status: string): string[] {
   return lines;
 }
 
-/**
- * Floating minimap: circular (compact) or rounded square (expanded) with a light rim and range chip.
- * In expanded mode the selected bus gets a compact panel at the bottom of the map (the main card is hidden).
- * withVoice shrinks and shifts the expanded map so journey and voice panels stay readable.
- */
-function drawStreetMap(ctx: CanvasRenderingContext2D, w: number, h: number, f: MapFrame, selected: Bus | null, withVoice = false) {
-
-  const expanded = f.mode === 'expanded';
-  const size = expanded ? Math.min(w * (withVoice ? 0.42 : 0.82), h * 0.46) : Math.min(w * 0.39, h * 0.33);
-  const x = expanded && !withVoice ? (w - size) / 2 : w * 0.27 - size / 2;
-  const y = h * 0.82 - size;
-  const cx = x + size / 2;
+/** The glass map is drawn before all head-locked HUD content. */
+function drawStreetMap(ctx: CanvasRenderingContext2D, w: number, h: number, f: MapFrame, s: HudState<Bus>) {
+  const expanded = s.mapPanel?.visible ?? s.expandedMap ?? f.mode === 'expanded';
+  const panel = s.mapPanel ?? { visible: expanded, openT: 1, yawOffsetDeg: 0, pitchOffsetDeg: 0 };
+  const size = Math.min(w * 0.39, h * 0.33);
+  const rect = expanded ? mapPanelRect(w, h, s.halfTan, panel, glassBounds(w, h, !!s.handheld, s.safeInsets))
+    : { x: w * 0.27 - size / 2, y: h * 0.82 - size, w: size, h: size };
+  const { x, y } = rect;
+  const cx = x + rect.w / 2;
   const shape = () => {
-    if (expanded) roundRect(ctx, x, y, size, size, fs(20));
-    else {
-      ctx.beginPath();
-      ctx.arc(cx, y + size / 2, size / 2, 0, Math.PI * 2);
-    }
+    if (expanded) roundRect(ctx, x, y, rect.w, rect.h, Math.min(28, rect.w * 0.06));
+    else { ctx.beginPath(); ctx.arc(cx, y + size / 2, size / 2, 0, Math.PI * 2); }
   };
-
   ctx.save();
-  ctx.shadowColor = T.cardShadow;
-  ctx.shadowBlur = 18;
-  ctx.shadowOffsetY = 4;
+  ctx.globalAlpha = expanded ? panel.openT : 1;
   shape();
-  ctx.fillStyle = T.surface;
+  ctx.fillStyle = expanded ? 'rgba(180, 210, 220, 0.045)' : T.surface;
   ctx.fill();
+  ctx.save(); shape(); ctx.clip();
+  if (expanded) drawFloatingMapLayers(ctx, f, rect);
+  else if (f.located) drawMapCrop(ctx, f.canvas, rect);
   ctx.restore();
-
-  ctx.save();
-  shape();
-  ctx.clip();
-  ctx.globalAlpha = expanded ? 0.9 : 0.97;
-  if (f.located) ctx.drawImage(f.canvas, x, y, size, size);
-  ctx.restore();
-
-  ctx.save();
-  shape();
-  ctx.strokeStyle = T.rim;
-  ctx.lineWidth = 2.5;
-  ctx.stroke();
-  // Heading-up marker at the top of the rim (or N when the compass is unavailable).
-  if (f.located) {
-    if (f.northUp) label(ctx, cx, y + fs(10), 'N', fs(9), T.text, 'center', true);
-    else {
-      ctx.fillStyle = T.text;
-      ctx.beginPath();
-      ctx.moveTo(cx, y + 8);
-      ctx.lineTo(cx - 4.5, y - 1);
-      ctx.lineTo(cx + 4.5, y - 1);
-      ctx.closePath();
-      ctx.fill();
-    }
+  shape(); ctx.strokeStyle = expanded ? 'rgba(235, 250, 255, 0.65)' : T.rim;
+  ctx.lineWidth = expanded ? 1.2 : 2.5; ctx.stroke();
+  if (expanded) {
+    ctx.save(); shape(); ctx.clip();
+    const highlight = ctx.createLinearGradient(x, y, x, y + 24);
+    highlight.addColorStop(0, 'rgba(255,255,255,0.24)'); highlight.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = highlight; ctx.fillRect(x, y, rect.w, 24); ctx.restore();
   }
-
-  // Range chip straddling the bottom of the rim.
-  const caption = !f.located ? 'Waiting for location' : `${f.extentKm.toFixed(f.extentKm < 1 ? 2 : 1)} km${f.northUp ? ' · N up · no compass' : ''}`;
-  ctx.font = `700 ${fs(8.5)}px ${FONT}`;
-  const cw = ctx.measureText(caption).width + fs(14);
-  const ch = fs(8.5) + 8;
-  const capY = y + size - ch / 2;
-  ctx.shadowColor = T.cardShadow;
-  ctx.shadowBlur = 4;
-  roundRect(ctx, cx - cw / 2, capY, cw, ch, ch / 2);
-  ctx.fillStyle = T.surface;
-  ctx.fill();
-  ctx.shadowColor = 'transparent';
-  ctx.fillStyle = T.text;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(caption, cx, capY + ch / 2 + 0.5);
-  if (f.status && f.located) {
-    // Fallback notice near the top of the map, clear of the markers around the center.
-    ctx.font = `600 ${fs(8)}px ${FONT}`;
-    const nw = ctx.measureText(f.status).width + fs(12);
-    const nh = fs(8) + 7;
-    const ny = y + size * (expanded ? 0.06 : 0.16);
-    roundRect(ctx, cx - nw / 2, ny, nw, nh, nh / 2);
-    ctx.fillStyle = T.surface;
-    ctx.fill();
-    ctx.fillStyle = T.warning;
-    ctx.fillText(f.status, cx, ny + nh / 2 + 0.5);
-  }
-
-  // Expanded: compact panel for the selected bus inside the map's bottom edge.
-  if (expanded && selected) {
-    const fields = busFields(selected);
-    const ph = fs(30);
-    const pw = Math.min(size - fs(20), size * 0.9);
-    const px = cx - pw / 2;
-    const py = y + size - ch / 2 - ph - fs(8);
-    ctx.shadowColor = T.cardShadow;
-    ctx.shadowBlur = 8;
-    roundRect(ctx, px, py, pw, ph, fs(12));
-    ctx.fillStyle = T.surface;
-    ctx.fill();
-    ctx.shadowColor = 'transparent';
-    ctx.font = `800 ${fs(12)}px ${FONT}`;
-    const tileW = Math.max(fs(22), ctx.measureText(selected.route).width + fs(10));
-    roundRect(ctx, px + fs(5), py + fs(4), tileW, ph - fs(8), fs(8));
-    ctx.fillStyle = T.accent;
-    ctx.fill();
-    ctx.fillStyle = T.onAccent;
-    ctx.fillText(selected.route, px + fs(5) + tileW / 2, py + ph / 2 + 0.5);
-    ctx.textAlign = 'left';
-    const tx = px + fs(5) + tileW + fs(7);
-    ctx.font = `700 ${fs(10)}px ${FONT}`;
-    ctx.fillStyle = selected.destination ? T.text : T.muted;
-    const distW = (() => { ctx.save(); ctx.font = `600 ${fs(9.5)}px ${FONT}`; const m = ctx.measureText(fields.distance).width; ctx.restore(); return m; })();
-    ctx.fillText(ellipsize(ctx, selected.destination ?? 'Destination unknown', px + pw - tx - distW - fs(14)), tx, py + ph / 2 + 0.5);
-    ctx.font = `600 ${fs(9.5)}px ${FONT}`;
-    ctx.fillStyle = T.muted;
-    ctx.textAlign = 'right';
-    ctx.fillText(fields.distance, px + pw - fs(8), py + ph / 2 + 0.5);
-  }
-
-  ctx.textAlign = 'center';
-  ctx.fillStyle = T.surface;
-  roundRect(ctx, w * 0.08, h * 0.96 - 7, w * 0.84, 14, 7);
-  ctx.fill();
-  ctx.fillStyle = T.muted;
-  ctx.font = `8px ${FONT}`;
-  ctx.fillText('OpenFreeMap © OpenMapTiles © OpenStreetMap', w / 2, h * 0.96);
+  const chip = (text: string, cy: number, warning = false) => {
+    ctx.font = `${expanded ? 600 : 700} ${fs(expanded ? 10 : 8.5)}px ${FONT}`;
+    const value = ellipsize(ctx, text, rect.w - 32);
+    const cw = ctx.measureText(value).width + 14;
+    roundRect(ctx, cx - cw / 2, cy - 10, cw, 20, 10);
+    ctx.fillStyle = T.surface; ctx.fill();
+    ctx.fillStyle = warning ? T.warning : T.text;
+    ctx.textAlign = 'center'; ctx.fillText(value, cx, cy);
+  };
+  if (f.northUp && f.located) chip('N', y + 18);
+  if (f.status && f.located) chip(f.status, y + (expanded ? rect.h * 0.20 : size * 0.2), true);
+  const caption = !f.located ? 'Waiting for location' : `${formatMiles(f.extentKm)}${f.northUp ? ' · N up · no compass' : ''}`;
+  chip(caption, y + rect.h - (expanded ? 44 : 0));
+  ctx.textAlign = 'center'; ctx.font = `8px ${FONT}`;
+  const creditY = expanded ? y + rect.h - 16 : h * 0.96;
+  const credit = ellipsize(ctx, 'OpenFreeMap © OpenMapTiles © OpenStreetMap', expanded ? rect.w - 24 : w * 0.84);
+  const cw = ctx.measureText(credit).width + 12;
+  roundRect(ctx, (expanded ? cx : w / 2) - cw / 2, creditY - 7, cw, 14, 7);
+  ctx.fillStyle = T.surface; ctx.fill(); ctx.fillStyle = T.muted;
+  ctx.fillText(credit, expanded ? cx : w / 2, creditY);
   ctx.restore();
 }

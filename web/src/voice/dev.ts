@@ -20,7 +20,7 @@ const conversation = createTransitConversation(() => ({
 }), actions => {
   actions.forEach(action => { if (action.type === 'set_map_mode' || action.type === 'set_map_extent') map = applyMapAction(map, action); });
   log(`applied map: ${JSON.stringify(map)}`);
-  return `Map ${map.mode}, ${map.extentKm} kilometers.`;
+  return `Map ${map.mode}, ${(map.extentKm / 1.609344).toFixed(1)} miles.`;
 });
 const sayInput = $<HTMLInputElement>('say');
 const speakChk = $<HTMLInputElement>('speak');
@@ -46,16 +46,17 @@ function begin(useRealMic: boolean) {
   fakeFeed = null;
   conversation.reset();
   voice = startVoice({
+    onSpeechStatus: status => log(`speech: ${status.state} ${status.provider ?? ''}${'reason' in status ? ` (${status.reason})` : ''}`),
     onCaptureStart: () => conversation.capture(),
     requestAnswer: async (question, signal) => {
-      if (!scripted.checked) return conversation.ask(question, signal);
+      if (!scripted.checked) return conversation.askSpeech(question, signal);
       const q = question.toLowerCase();
       if (/expand|open.*map/.test(q)) map = applyMapAction(map, { type: 'set_map_mode', mode: 'expanded' });
       else if (/close.*map|compact/.test(q)) map = applyMapAction(map, { type: 'set_map_mode', mode: 'compact' });
       else if (/zoom/.test(q)) map = applyMapAction(map, { type: 'set_map_extent', extentKm: map.extentKm * (/out/.test(q) ? 2 : 0.5) });
       else return 'Scripted demo: route 38 reports Gainesville Place. Delay, occupancy and arrival times are unknown. This is synthetic data.';
       log(`scripted map: ${JSON.stringify(map)}`);
-      return `Scripted demo: map ${map.mode}, ${map.extentKm} kilometers.`;
+      return `Scripted demo: map ${map.mode}, ${(map.extentKm / 1.609344).toFixed(1)} miles.`;
     },
     onStateChange: (s: VoiceState) => {
       stateEl.textContent = s;
@@ -69,7 +70,7 @@ function begin(useRealMic: boolean) {
     },
     onError: (m) => log(`ERROR: ${m}`),
     speak: speakChk.checked,
-    ttsEndpoint: null,
+    ttsEndpoint: '/api/voice/tts',
     recognizer: useRealMic ? undefined : createFakeRecognizer(),
   });
   stopBtn.disabled = false;

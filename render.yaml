@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: transitlens
+    runtime: python
+    plan: free
+    region: virginia
+    buildCommand: bash scripts/build-managed.sh
+    startCommand: python scripts/serve-managed.py
+    healthCheckPath: /healthz
+    autoDeployTrigger: off
+    envVars:
+      - key: NODE_VERSION
+        value: 24.21.0
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: RTS_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

@@ -1,0 +1,54 @@
+name: transitlens
+services:
+  bus:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.bus
+    environment:
+      RTS_API_KEY: ${RTS_API_KEY:?Set RTS_API_KEY in deploy/.env}
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/api/buses/health', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
+  voice:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.voice
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in deploy/.env}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      BUS_SERVICE_URL: http://bus:8003
+    restart: unless-stopped
+    depends_on:
+      bus:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/api/voice/health', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+    environment:
+      BUS_SERVICE_URL: http://bus:8003
+      VOICE_SERVICE_URL: http://voice:8002
+      PUBLIC_URL: ${PUBLIC_URL:-}
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    restart: unless-stopped
+    depends_on:
+      bus:
+        condition: service_healthy
+      voice:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3

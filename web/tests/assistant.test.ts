@@ -11,13 +11,15 @@ test('Hey Gemini supports a question, bare activation, punctuation and normal co
   assert.equal(matchWake('Hey Gemini, where is this bus going?'), 'where is this bus going');
   assert.equal(matchWake('Okay Gemini'), '');
   assert.equal(matchWake('Gemini zoom in'), null);
+  assert.equal(matchWake('The Gemini service is working'), null);
   assert.equal(matchWake('where is this bus going'), null);
+  assert.equal(matchWake('Hey Gemini first question Hey Gemini route 38'), 'route 38');
 });
 
 test('reject stale IDs, arbitrary actions, partial invalid batches, and invalid map ranges', () => {
   assert.deepEqual(parseTransitReply(reply, 'request'), reply);
   for (const bad of [
-    { ...reply, requestId: 'old' }, { ...reply, answer: '' },
+    { ...reply, requestId: 'old' }, { ...reply, speechId: 'arbitrary text' }, { ...reply, answer: '' },
     { ...reply, actions: [{ type: 'execute', url: 'https://example.com' }] },
     { ...reply, actions: [...reply.actions, { type: 'set_map_extent', extentKm: Infinity }] },
     { ...reply, actions: [{ type: 'set_map_extent', extentKm: 0 }] },
@@ -46,7 +48,7 @@ test('captured gaze, bounded follow-ups and actual map results survive model cla
     assert.equal(state.mode, 'expanded');
     assert.equal(requests[0].context.focusedBusId, '2417');
     for (let i = 0; i < 6; i++) await conversation.ask('Zoom out', new AbortController().signal);
-    assert.equal(requests.at(-1).history.length, 4);
+    assert.equal(requests.at(-1).history.length, 2);
     assert.equal(requests.at(-1).context.previousBusId, '2417');
     conversation.reset();
     await conversation.ask('New session', new AbortController().signal);
@@ -126,18 +128,49 @@ test('wake transcript freezes gaze, reaches the transit request and applies one 
   }
 });
 
-test('spoken reply allows a bounded follow-up window and exits cleanly after silence', async () => {
+test('spoken reply returns to wake-only standby and exits cleanly', async () => {
   const { startVoice } = await import('../src/voice/index.ts');
   const previousWindow = (globalThis as any).window;
   (globalThis as any).window = { setTimeout, clearTimeout };
   const rec = { start() {}, stop() {}, onResult: null as ((t:string,f:boolean)=>void)|null, onError: null as ((m:string,f:boolean)=>void)|null };
-  const voice = startVoice({ recognizer:rec, speak:false, followUpMs:5, requestAnswer:async()=> 'Ready.', onStateChange(){}, onAnswer(){} });
+  const voice = startVoice({ recognizer:rec, speak:false, requestAnswer:async()=> 'Ready.', onStateChange(){}, onAnswer(){} });
   try {
     await voice.ask('What bus is that?');
-    assert.equal(voice.getState(),'listening');
+    assert.equal(voice.getState(),'idle');
     await new Promise(resolve=>setTimeout(resolve,15));
     assert.equal(voice.getState(),'idle');
     voice.stop();
     assert.equal(voice.getState(),'idle');
   } finally { voice.stop(); (globalThis as any).window=previousWindow; }
+});
+
+
+test('approved speech metadata is returned only after actions apply and legacy answers stay strings', async () => {
+  const original = globalThis.fetch;
+  let applied = false;
+  const speechId = 'a'.repeat(43);
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(String(options?.body));
+    return Response.json({ ...reply, requestId: body.requestId, actions: [], answer: 'Route 38.', speechId });
+  };
+  const conversation = createTransitConversation(() => context, () => { applied = true; return ''; });
+  try {
+    const result = await conversation.askSpeech('What bus?', new AbortController().signal);
+    assert.ok(applied);
+    assert.equal(result.answer, 'Route 38.');
+    assert.equal(result.speechId, speechId);
+    assert.equal(typeof await conversation.ask('What bus?', new AbortController().signal), 'string');
+  } finally { globalThis.fetch = original; }
+});
+
+test('action application failure never returns a speech capability', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(String(options?.body));
+    return Response.json({ ...reply, requestId: body.requestId, speechId: 'a'.repeat(43) });
+  };
+  const conversation = createTransitConversation(() => context, () => { throw new Error('UI unavailable'); });
+  try {
+    await assert.rejects(conversation.askSpeech('Open map', new AbortController().signal), /UI unavailable/);
+  } finally { globalThis.fetch = original; }
 });
