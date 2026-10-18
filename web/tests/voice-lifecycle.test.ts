@@ -92,6 +92,59 @@ test('wake gating and interruption across every asynchronous voice phase', async
         assert.equal(x.requests.length, 2);
       } finally { x.voice.stop(); }
     });
+    await t.test('browser results can split the wake greeting from the assistant name', async () => {
+      const oldDocument = g.document;
+      let native: any;
+      const visibility = new EventTarget();
+      g.document = { visibilityState: 'visible', addEventListener: visibility.addEventListener.bind(visibility),
+        removeEventListener: visibility.removeEventListener.bind(visibility) };
+      g.window.SpeechRecognition = class {
+        onresult: any; onend: any; onerror: any;
+        constructor() { native = this; }
+        start() {} abort() {}
+      };
+      const x = setup(async () => 'Done.', false, createBrowserRecognizer());
+      const results: any[] = [];
+      const emit = (text: string, final = true) => {
+        if (results.at(-1)?.isFinal === false) results.pop();
+        results.push({ 0: { transcript: text }, isFinal: final });
+        native.onresult({ resultIndex: results.length - 1, results });
+      };
+      try {
+        emit('Hey');
+        emit('Gemini open the', false);
+        emit('Gemini open the map');
+        await tick();
+        assert.deepEqual(x.requests, ['open the map']);
+        emit('ordinary background conversation');
+        emit('Gemini close the map');
+        await tick();
+        assert.equal(x.requests.length, 1);
+        emit('Hey');
+        emit('unrelated speech');
+        emit('Gemini close the map');
+        await tick();
+        assert.equal(x.requests.length, 1);
+        const now = Date.now;
+        try {
+          const started = now();
+          Date.now = () => started;
+          emit('Hey');
+          Date.now = () => started + 2001;
+          emit('Gemini close the map');
+        } finally { Date.now = now; }
+        await tick();
+        assert.equal(x.requests.length, 1);
+        emit('Hey');
+        emit('Gemini close the map');
+        await tick();
+        assert.deepEqual(x.requests, ['open the map', 'close the map']);
+      } finally {
+        x.voice.stop();
+        delete g.window.SpeechRecognition;
+        g.document = oldDocument;
+      }
+    });
     for (const provider of ['gemini', 'browser'] as const) {
       await t.test(`browser adapter accepts repeated wakes in one interim result during ${provider} playback`, async () => {
         const oldDocument = g.document;

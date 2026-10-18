@@ -1,5 +1,17 @@
 # TransitLens copilot and showcase verification
 
+## Split wake phrase regression, October 18, 2026
+
+The user reported no reaction to the wake phrase on iPhone Safari.
+Before editing, a desktop browser with simulated recognition results reproduced an ignored command when speech arrived as separate finalized `Hey` and `Gemini close the map` results.
+The same command worked when the activation arrived in one result.
+The voice lifecycle now joins an isolated greeting with its next continuation within two seconds and preserves that activation through interim revisions and the final result.
+Unrelated speech and expired greetings cannot supply an activation.
+The browser check now opens the expanded map through split recognition results, the real voice HTTP endpoint, validated actions and the shared UI.
+All 84 web tests and the web production build pass in the original checkout.
+The deployment checkout preserves the newer discovery interface and passes all 86 web tests and the web production build.
+Physical iPhone microphone recognition and confirmation of the user's specific failure remain pending.
+
 ## Natural routing implementation, October 17, 2026
 
 The natural-routing slice passed 73 voice-service tests, 43 bus-service tests, and 39 web tests.

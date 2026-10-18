@@ -32,6 +32,8 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
   const retiredUtterances = new Map<string, number>();
   const captureUtterances = new Map<string, number>();
   let pendingWakeFinal: string | null = null;
+  let pendingGreeting: { text: string; at: number } | null = null;
+  let splitWake: { greeting: string; utteranceId: string } | null = null;
 
   function speechStatus(status: SpeechStatus) { opts.onSpeechStatus?.(status); }
 
@@ -42,6 +44,7 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
     endCapture();
     stopSpeaking();
     spokenText = '';
+    pendingGreeting = null;
     if (wasSpeaking) speechStatus({ state: 'cancelled', provider: null });
   }
 
@@ -69,7 +72,14 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
     const normalized = normalizeTranscript(text);
     // Speaker feedback is never a new question. Exact fragments of current output are ignored.
     if (state === 'speaking' && normalized.split(' ').length >= 2 && spokenText.includes(normalized)) return;
-    const wake = scanWake(text);
+    // Browsers can finalize the greeting before recognizing the assistant name.
+    // Join only an isolated greeting and its immediate continuation, never old chatter.
+    let wake = scanWake(text);
+    const greeting = splitWake && splitWake.utteranceId === utteranceId ? splitWake.greeting
+      : pendingGreeting && Date.now() - pendingGreeting.at <= 2000 ? pendingGreeting.text : null;
+    if (!wake && greeting) wake = scanWake(`${greeting} ${text}`);
+    pendingGreeting = !wake && isFinal && /^(?:hey|hay|hi|ok|okay|yo)$/.test(normalized)
+      ? { text: normalized, at: Date.now() } : null;
     const afterWake = wake?.question ?? null;
     const count = wake?.count ?? 0;
     const retired = utteranceId ? retiredUtterances.get(utteranceId) : undefined;
@@ -84,6 +94,8 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
       interrupt();
       beginCapture();
     }
+    // Interim revisions and the final result must strip the same split activation.
+    if (wake && greeting && utteranceId) splitWake = isFinal ? null : { greeting, utteranceId };
     if (utteranceId) {
       retiredUtterances.delete(utteranceId);
       captureUtterances.set(utteranceId, count);
@@ -136,6 +148,7 @@ export function startVoice(opts: StartVoiceOptions): VoiceHandle {
   }
 
   function endCapture() {
+    splitWake = null;
     for (const [id, count] of captureUtterances) retireUtterance(id, count);
     captureUtterances.clear();
     capturing = false;
