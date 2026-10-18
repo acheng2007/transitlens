@@ -1,198 +1,139 @@
-# TransitLens
+<div align="center">
+  <img src="web/public/icons/icon-192.png" alt="TransitLens logo" width="88" height="88">
+  <h1>TransitLens</h1>
+  <p><strong>Look down the street. Find your bus.</strong></p>
+  <p>A live transit HUD for Gainesville RTS, with geographic bus markers, an interactive map, and a Gemini voice copilot.</p>
+  <p>
+    <a href="https://transitlens-ny1b.onrender.com">Live demo</a> ·
+    <a href="#quick-start">Quick start</a> ·
+    <a href="#try-it">Try it</a> ·
+    <a href="#development">Development</a> ·
+    <a href="#deployment">Deployment</a>
+  </p>
+</div>
 
-Hold up your phone (or wear Google Cardboard), look down a Gainesville street, and identify nearby RTS buses by route and geographic bearing.
-The existing camera, stereo layout, compass, pinhole projection, calibration controls, bottom minimap, and laptop casting power the experience.
+## Your next bus, in view
 
-## Current experience
+Point your phone toward the street or place it in Google Cardboard.
+TransitLens uses GPS and compass heading to place nearby buses at their geographic bearings, with route numbers front and center.
+Hold your gaze on a marker to see its destination and available vehicle information.
 
-For production packaging and verification, see [deployment preparation](docs/DEPLOYMENT.md).
-For the simpler managed setup without Docker, see [Render hosting](docs/MANAGED_HOSTING.md).
+- **Live RTS data:** nearby vehicles, route patterns, stops, and available stop-specific arrival predictions.
+- **Phone and Cardboard views:** a full-screen handheld HUD or synchronized stereo views with gaze selection and headset calibration.
+- **Interactive map:** a persistent minimap with streets, route overlays, stops, and an expanded view.
+- **Gemini copilot:** spoken or typed questions, direct-route discovery, route highlighting, and boarding-stop guidance.
+- **Showcase mode:** ten moving synthetic buses around UF on captured RTS route geometry, with clearly labeled scripted arrivals.
+- **Laptop casting:** share the camera and HUD through WebRTC, with recording from the viewer.
 
-The web app defaults to Live RTS, the full-screen Phone view, and a 3 mile search radius; Google Cardboard is one tap away on the start screen.
-iPhone Safari is the primary target. The Phone view works held upright or sideways, and the app can be added to the Home Screen to open full screen.
-TransitLens combines live RTS identification, an interactive street map, and a Gemini transit copilot.
-Look toward a route marker, hold your gaze, then say "Hey Gemini, where is this bus going?"
-Ask for routes to a destination, highlight a route, select a trip and find its stationary boarding stop.
-Both eyes and casting share the same selection, route overlays, trip and voice state.
-Cardboard uses a button-free HUD and a voice-opened transparent floating map; see [Cardboard HUD behavior and verification](docs/CARDBOARD_HUD.md).
-The server-side bus service retrieves and normalizes vehicles; the HUD shows route markers, dwell-selected transit cards, and nearby buses on the persistent minimap.
-Missing transit metadata stays unknown, and no arrival estimates are invented.
+## Quick start
 
-The assistant uses server-side structured Gemini intent responses with deterministic transit queries, browser speech recognition, and one question per wake activation.
-Substantive Gemini and local transit answers use Gemini Flash-Lite TTS (Sulafat) with warm conversational delivery; quick confirmations and remote-audio failures use the best available browser voice.
-"Read the bus sign" sends one small camera still to Gemini on request; regular questions use transit context only.
-Route planning checks real ordered stop patterns and direction, with a boarding stop within 0.8 km straight-line distance.
-Available arrivals are stop/route/direction-specific RTS predictions, not estimates from vehicle distance.
-Guidance is approximate bearing and distance to the stop, not a verified pedestrian route.
-
-An explicit showcase mode has ten moving synthetic vehicles on captured Gainesville RTS route geometry.
-It can use Gemini when configured, or clearly labeled deterministic commands without a Gemini key.
-Demo arrivals are scripted and never presented as live.
-Live mode never substitutes demo vehicles.
-Physical phone, headset, microphone and outdoor alignment acceptance remains pending.
-
-## Run locally
-
-Quick start for all three services:
+Requires **Node.js 24.12+**, **Python 3.11+**, and npm.
+Run from the repository root:
 
 ```sh
 ./scripts/dev.sh
-# If port 5173 is occupied: WEB_PORT=5174 ./scripts/dev.sh
 ```
 
-The script installs isolated service dependencies, creates ignored environment files when absent, starts bus-service on 8003 and voice-service on 8002, and starts Vite.
-Set `RTS_API_KEY` in `bus-service/.env` and `GEMINI_API_KEY` in `voice-service/.env`, then restart.
-The default text model is `gemini-3.5-flash-lite`, with model fallback disabled.
-Use a Gemini API key from a project marked Free tier in AI Studio for free API usage; a model setting cannot change the project's billing plan.
-Override `GEMINI_MODEL` for your account; automatic retries and model fallback are disabled.
-Exact map controls use no Gemini calls; most questions use one text call, with at most two for explicit explanations.
-Provider budgets are 12 text calls and, by default, ten TTS generations per rolling minute per process; approved audio has a bounded cache.
-Set `GEMINI_TTS_GENERATIONS_PER_MINUTE` in the voice service to configure the speech budget (1-120).
-The assistant rejects unrelated and mixed requests, including coding, before action preparation; see [voice-service guardrails](voice-service/README.md#scope-quota-and-diagnostics).
-No provider credential belongs in browser code.
-For manual service setup, follow the instructions below.
+The script installs dependencies, creates local environment files, and starts all three services.
+Open [localhost:5173](http://localhost:5173).
+To use another web port, run `WEB_PORT=5174 ./scripts/dev.sh`.
 
-Start [bus-service](bus-service/README.md) with a server-only `RTS_API_KEY` in its ignored `.env`:
+Configure the generated environment files, then restart:
 
-```sh
-cd bus-service
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --env-file .env --host 127.0.0.1 --port 8003
-```
+| File | Setting | Enables |
+| --- | --- | --- |
+| `bus-service/.env` | `RTS_API_KEY` | Live Gainesville RTS data |
+| `voice-service/.env` | `GEMINI_API_KEY` | Gemini answers, sign reading, and generated speech |
+| `voice-service/.env` | `GEMINI_MODEL` | Optional text-model override |
 
-In another terminal:
+All keys stay on the server.
+The service `.env.example` files list the available configuration options.
+Without keys, choose **Showcase demo** for synthetic transit data and labeled local commands.
 
-```sh
-cd web
-npm install
-npm run dev
-```
+### Open on your phone
 
-### Open it on your phone (iPhone first)
-
-Phones need HTTPS for the camera, GPS, and compass. In a third terminal:
+Camera, location, motion, and microphone features require a secure context.
+For local phone access, install `cloudflared`, leave the development server running, and open a second terminal:
 
 ```sh
 cd web
 npm run phone
 ```
 
-This opens a free Cloudflare quick tunnel (install once: `brew install cloudflared`, or `winget install Cloudflare.cloudflared` on Windows) and prints a QR code.
-Scan it with the iPhone Camera app and open the link in Safari. The laptop's start screen at `http://localhost:5173` shows the same QR code.
-The link changes each time `npm run phone` restarts.
+Scan the printed QR code and open the HTTPS link on your phone.
+The tunnel URL changes when restarted.
+Allow the requested permissions when entering AR; iPhone Safari requests motion access from that gesture.
+Choose Phone or Google Cardboard in settings.
+On iPhone, **Share → Add to Home Screen** provides an app-style full-screen launch.
 
-On the phone, tap **Start AR** and allow camera, location, and motion; iPhone asks for motion only from that tap.
-For an app icon that opens full screen, use **Share → Add to Home Screen** (re-add it after the link changes).
+## Try it
 
-- **Home screen**: live RTS indicator, nearby-bus cards (tap **Use my location**), and **Enter AR**. Settings (top right) holds every option, including **Appearance: System / Light / Dark**, which also themes the AR view and map.
-- **Phone view** (default): hold the phone up, upright or sideways. Tap ✕ (or long-press) to go back.
-- **Google Cardboard**: pick it on the start screen and turn the phone sideways. iPhones need size and FOV calibration.
+Enable **Hey Gemini + spoken replies**, look toward a bus marker, and start a question with "Hey Gemini".
 
-The home screen includes an interactive schematic of captured RTS routes 9, 20 and 38, with an explicitly illustrative vehicle marker.
-Type a destination or choose a shortcut to open your selected view and ask the copilot.
-The copilot shows question and processing feedback, selectable trip cards with boarding and drop-off stops, arrival provenance, and explicit destination choices when names are ambiguous.
-Its connection badge distinguishes a configured Gemini key, local commands, and an unavailable service.
+| Say | Explore |
+| --- | --- |
+| "Where is this bus going?" | The focused vehicle's destination |
+| "Show routes to Shands" | Direct routes and destination choices |
+| "Highlight route 38" | A route overlay on the map |
+| "Take the first option" | A proposed trip and its boarding stop |
+| "Enlarge the minimap" | The expanded map |
+| "Close the map" | The compact HUD |
+| "Cancel guidance" | Clear boarding guidance |
+| "Read the bus sign" | An explicit camera-still request |
 
-Double-tap the middle to unlock calibration, then tap the middle to cycle controls (Phone: zoom, FOV; Cardboard: also tilt, spacing, shift, size) and the left/right thirds to adjust.
+Each spoken question needs a fresh wake phrase.
+Say "Hey Gemini" during playback to interrupt and ask again.
+Use **Ask** for typed input when speech recognition is unavailable.
+Generated speech falls back to browser speech when needed.
 
-Open `http://localhost:5173/?dev=1` for desktop development with arrow-key heading controls and a clearly labeled fixed Reitz Union location.
-Add `&camera=off` for a labeled blank background without requesting a camera.
-Press Escape to return to settings on a keyboard.
-Desktop mode fetches live RTS vehicles around that public location and does not use desktop GPS.
-Enable casting and open `/cast.html` on the laptop to view the shared HUD over WebRTC.
-The Vite proxy forwards `/api/buses` and `/api/transit` to port 8003 and retains the legacy service proxies.
+For a desktop showcase without camera access, open:
 
-If RTS fails, cached buses remain with their retrieval age and `LIVE DATA TEMPORARILY UNAVAILABLE`.
-A successful empty result says `No nearby buses`.
-GPS waiting, denial, compass/correction waiting, and camera failure have distinct messages.
-Camera failure allows a labeled blank background.
-The minimap stays visible with a location fix, including an empty feed or unavailable heading.
-Without heading it explicitly uses north up.
+```text
+http://localhost:5173/?dev=1&camera=off&demo=1
+```
 
-## Street map and compass distance
+Desktop development uses a fixed Reitz Union location and arrow keys to adjust heading.
+Demo mode preserves real phone orientation and uses synthetic vehicles; live mode never substitutes demo data during an outage.
+Street tiles and cloud features still require network access.
 
-The bottom circular map uses MapLibre and OpenFreeMap streets with reported live vehicle positions, without road snapping.
-It follows GPS and heading, independently of compass filtering.
-Map opens a nearly full-screen glass panel in Cardboard and Phone mode and suppresses the focused card.
-The panel animates open and closed, follows larger head turns smoothly, and keeps compass and voice feedback above the map.
-Reduced-motion preferences skip the opening and closing animation.
-Close returns to the compact map and preserves zoom.
-Use the duplicated Map/Close and +/− buttons, or M, +/−, and Escape on a keyboard.
-Escape closes the expanded map before leaving for settings.
-Map controls do not trigger calibration.
+**Calibration:** double-tap the center to unlock, tap the center to cycle controls, and tap left or right to adjust.
+Cardboard supports camera zoom, projection FOV, tilt, lens spacing, horizontal shift, and image size.
+Long-press to return to settings.
 
-Search radius and compass distance are both edited in miles.
-The saved compass distance defaults to 1 mile.
-All nearby disables this filter.
-The limit applies to individual compass buses, edge arrows, dwell selection, and cards, while the map keeps the entire fetched feed.
-Increasing this limit does not fetch beyond Search radius.
-The map initially covers that search radius; each zoom changes its center-to-edge extent by a factor of two.
-Map range labels use miles to match the settings.
-Without GPS it waits for location; without compass it uses north up and labels the limitation.
-Tile/WebGL failures show a labeled radar fallback without interrupting the compass or camera.
-Roads require network access.
-Map attribution is included in the headset and cast pixels.
+**Casting:** enable casting on the start screen, then open `/cast.html` on the laptop.
+The devices need a working peer-to-peer network path.
+The viewer can record the stream as WebM.
 
-One map renderer updates at most 15 times per second, with buffer pixel ratio capped at 2.
-Both eyes and casting copy its composite frame.
-Validated map and journey actions drive route overlays, stop markers and boarding guidance.
-Direct route discovery and available arrival predictions are implemented; transfer planning and verified pedestrian paths remain pending.
+## How it works
 
-## Ask Gemini
+```text
+Gainesville RTS → Bus service → Shared transit state → Phone / Cardboard / Cast
+                                      ↕
+                              Voice service + Gemini
+```
 
-Natural routing supports bus-to-stop distances, route descriptions, next stops, direct-trip recommendations, and an explicit onboard selection.
-Try "How far is bus 1 from Tigert Hall stop?", "Take me to Reitz Union", "Tell me more about that route", or "I'm on route 1".
-Ambiguous stops and multiple vehicles require a choice; route distance, straight-line distance, and verified arrivals remain distinct.
-Supported complete commands also work through labeled local transit tools without consuming Gemini quota.
-See [natural routing](docs/NATURAL_ROUTING.md) for APIs, follow-ups, and limitations.
+The web app uses Vite, TypeScript, and MapLibre.
+Two FastAPI services supply normalized transit data and assistant responses.
+Deterministic code computes bearings and route reachability; Gemini interprets requests, and the client validates actions before applying them to shared state.
 
-Enable **Hey Gemini + spoken replies** on the start screen.
-Hold your gaze on a bus marker and ask "Hey Gemini, where is this bus going?", "Is it delayed?", or "How full is it?"
-Say "Show routes to Shands", "Highlight route 38", "Take the first option", "Close the map", or "Cancel guidance."
-Start each spoken question with "Hey Gemini".
-Clarification replies can be short, such as “route 38” or “the second stop”; the assistant keeps the original question pending for up to five minutes.
-Map commands preserve that question, and “never mind” cancels it.
-After one answer, the assistant returns to wake-only standby and ignores ordinary background conversation.
-Say "Hey Gemini" during an answer to interrupt it and ask a new question.
-Gemini speech covers normal answers, clarifications and successful confirmations; "Gemini voice" or "Device voice" identifies the playback path.
-Device speech remains the fallback for unavailable Gemini audio.
-Tap the voice control or press Space on desktop to listen directly.
-**Ask** opens typed prompts and selectable trip cards when speech recognition is unavailable.
+| Directory | Responsibility |
+| --- | --- |
+| `web/` | Camera, compass, HUD, map, browser voice, and casting |
+| `bus-service/` | RTS integration, caching, route queries, and predictions |
+| `voice-service/` | Gemini requests, conversation state, actions, and speech |
+| `shared/` | TypeScript contracts and transit fixtures |
+| `app/android/` | Capacitor shell and native sensor bridges |
+| `deploy/` | Container builds and Compose configuration |
+| `scripts/` | Local startup, managed hosting, and production smoke checks |
 
-Routes and stop coordinates come from bus-service, and Gemini receives compact grounded transit results rather than computing reachability or geometry.
-Ambiguous destination names require a specific stop choice.
-A selected vehicle's exact destination coverage requires a matching pattern ID, not merely the same route number.
-Stale/partial catalogs and unavailable predictions remain explicit.
-The boarding marker uses straight-line bearing and distance, not walking directions.
+## Development
 
-"Read the bus sign" captures one JPEG with a maximum side of 640 pixels for the Gemini request.
-No continuous camera stream is sent or stored, and images are not retained in conversation history.
-Keep the destination display legible; unclear text cannot establish vehicle identity or intermediate stops.
+The web server runs on **5173**, bus service on **8003**, and voice service on **8002**.
+Vite proxies API requests to the Python services.
+Both FastAPI services expose interactive API documentation at `/docs` on their own ports.
+Shared browser contracts live in [`shared/transit.ts`](shared/transit.ts) and [`shared/assistant.ts`](shared/assistant.ts).
 
-Choose **Showcase demo** for fixed Reitz Union positioning and synthetic vehicles with live head orientation.
-Desktop preview: `http://localhost:5173/?dev=1&camera=off&demo=1`.
-Try "Show routes to Shands", then "Take the first option", "Close the map" and "Cancel guidance."
-With no Gemini key, those commands are visibly labeled scripted/local tools, and bus-sign reading reports that Gemini is not connected.
-Use [the showcase guide](docs/SHOWCASE.md) for a short presentation sequence.
-See [verification](docs/GEMINI_VERIFICATION.md) for completed and pending checks.
-
-## Routes and stops
-
-When no copilot route or trip is selected, the minimap draws the focused bus's current RTS pattern and stops in the route's color.
-The line uses the same projection as the bus markers in both eyes, casting, compact, expanded, and zoomed views.
-It stays for three seconds after focus is lost and clears immediately when a different bus is focused.
-Each pattern is fetched once per session; a missing pattern draws nothing rather than an invented line.
-Showcase mode uses its captured fixture for this overlay without a live RTS lookup.
-
-Bus-service exposes deterministic `/api/transit` endpoints for routes, patterns, nearby stops, stop-name search, and direct service between two stops or places.
-Direct-service results name the boarding and drop-off stops and give an approximate straight-line bearing to the boarding stop.
-They are labeled as direct-route coverage, not arrivals, transfers, or walking routes.
-The Gemini copilot uses the companion `/api/buses/network` and `/api/buses/plan` endpoints for route discovery, predictions and stop guidance.
-See [the bus-service API reference](bus-service/README.md#transit-routes-stops-and-direct-service) and [verification](docs/TRANSIT_ROUTES_VERIFICATION.md).
-
-## Verification
+Run the web checks:
 
 ```sh
 cd web
@@ -200,15 +141,89 @@ npm test
 npm run build
 ```
 
-Backend tests and setup are in [bus-service/README.md](bus-service/README.md).
-See [checkpoint verification](docs/LIVE_RTS_VERIFICATION.md) for completed checks and remaining physical-device gates.
-See [transit routes verification](docs/TRANSIT_ROUTES_VERIFICATION.md) for the route, stop, and overlay evidence.
-Android uses the shared RTS bus feed and transit HUD with native camera and compass calibration.
-Its shared-module build is checked separately; physical APK acceptance remains pending.
+Run backend checks from the repository root after the quick-start dependency installation:
 
-## Product direction
+```sh
+(cd bus-service && .venv/bin/python -m unittest discover -s tests -v)
+(cd voice-service && .venv/bin/python -m pip install -r requirements-dev.txt)
+(cd voice-service && .venv/bin/python -m pytest tests)
+```
 
-Gemini now supports focused-bus questions, visual sign reading, direct-route discovery, highlighting and boarding-stop guidance.
-Future work includes transfer-based journeys, verified pedestrian paths and hardware alignment acceptance.
-See [PRD](docs/PRD.md), [roadmap](docs/ROADMAP.md), and [agent instructions](AGENTS.md).
-Assign remaining work using the [parallel work plan](docs/PARALLEL_WORK.md), which defines eight workstreams, relevant files, dependencies, acceptance gates, and reusable task prompts.
+The browser voice harness at `/src/voice/dev.html` supports scripted input without a microphone or provider calls.
+
+<details>
+<summary><strong>Android builds</strong></summary>
+
+Install dependencies in both `web/` and `app/android/`, since native builds import shared web modules.
+APK packaging requires the Android SDK and JDK 21+.
+
+```sh
+cd app/android
+npm ci
+cp .env.example .env
+# Set VITE_TRANSIT_API_BASE_URL to your public HTTPS transit server in .env.
+npm run apk
+```
+
+The server must serve `/api/buses/nearby`; its URL is public configuration, never a provider key.
+Use `npm run build` to check the native bundle without packaging an APK.
+The native shell includes the shared transit HUD and native camera, compass, and location bridges; the complete assistant and casting experience lives in the web app.
+Release signing uses the ignored `native/keystore.properties` file.
+
+</details>
+
+## Deployment
+
+<details>
+<summary><strong>Docker Compose</strong></summary>
+
+From the repository root:
+
+```sh
+cp deploy/.env.example deploy/.env
+# Set RTS_API_KEY, GEMINI_API_KEY, and PUBLIC_URL in deploy/.env.
+docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build --wait
+```
+
+The production gateway serves built web assets and proxies the private APIs at `http://127.0.0.1:8080`.
+Place an HTTPS reverse proxy or named tunnel in front of it for phone access.
+Check `/healthz`, `/api/buses/health`, and `/api/voice/health` for readiness.
+Health checks report process readiness and configuration; verify live providers separately.
+
+The fixture-only production smoke check uses an isolated stack with provider keys cleared:
+
+```sh
+docker compose --env-file deploy/.env.example -f deploy/compose.yaml build
+WEB_PORT=8088 docker compose -p transitlens-smoke --env-file deploy/.env.example -f deploy/compose.yaml -f deploy/compose.smoke.yaml up -d --no-build --wait
+node scripts/smoke-production.mjs
+docker compose -p transitlens-smoke --env-file deploy/.env.example -f deploy/compose.yaml -f deploy/compose.smoke.yaml down
+```
+
+</details>
+
+<details>
+<summary><strong>Managed hosting</strong></summary>
+
+[`render.yaml`](render.yaml) defines a managed service using `scripts/build-managed.sh` and `scripts/serve-managed.py`.
+Create a Render Blueprint from the repository and set `RTS_API_KEY` and `GEMINI_API_KEY` as server-side secrets.
+Only the gateway is public; both Python services listen on loopback.
+Verify the health endpoints and phone permissions through the resulting HTTPS URL.
+
+</details>
+
+Use one instance and one worker per Python service for the current deployment.
+Transit caches, provider budgets, speech identifiers, and conversation state are process-local.
+Casting currently supports one active wearer/viewer pair per instance; multi-user casting and cross-network relay support require additional work.
+
+## Current boundaries
+
+Route discovery supports **direct trips**.
+Guidance shows approximate straight-line bearing and distance to a stationary boarding stop, rather than verified walking directions.
+Route coverage, active vehicles, and arrival predictions are distinct; missing metadata stays unknown.
+Temporary RTS failures retain available cached data with freshness and an unavailable-status message.
+
+Ordinary assistant questions use transit context.
+Only an explicit bus-sign request sends one bounded JPEG camera still to Gemini; images are not retained in conversation history.
+Browser speech recognition may use a network service and varies by browser.
+
+Transfer planning, verified pedestrian paths, and physical phone, headset, microphone, outdoor alignment, and cast-network acceptance remain pending.
