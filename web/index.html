@@ -97,7 +97,7 @@
       </main>
 
       <!-- ============ Settings (full-screen sheet) ============ -->
-      <section class="settings" id="settings" aria-label="Settings" hidden>
+      <dialog class="settings" id="settings" aria-label="Settings" hidden>
         <header class="settings-bar">
           <span></span>
           <button class="text-btn" id="settings-done">Done</button>
@@ -153,8 +153,8 @@
           <h2 class="group-label">Bus finder</h2>
           <div class="group">
             <label class="row row-stack">
-              <span class="row-head"><span class="row-label">Search radius</span><output id="radius-out" for="radius-input">5 km</output></span>
-              <input id="radius-input" type="range" min="1" max="50" step="1" value="5" />
+              <span class="row-head"><span class="row-label">Search radius</span><output id="radius-out" for="radius-input">3 mi</output></span>
+              <input id="radius-input" type="range" min="0.5" max="30" step="0.5" value="3" />
               <span class="row-help">How far to look for buses. The minimap covers this area.</span>
             </label>
             <label class="row row-stack">
@@ -209,7 +209,7 @@
           </ul>
           <p class="group-foot">If labels don't line up with real buses, calibrate FOV. iPhones in Cardboard also need size calibration.</p>
         </div>
-      </section>
+      </dialog>
     </div>
     <div id="stereo" hidden></div>
 

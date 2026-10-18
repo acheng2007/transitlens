@@ -55,7 +55,7 @@ export type Settings = {
   viewMode: ViewMode;
   /** "Hey Gemini" voice assistant (inherited module in src/voice/). */
   voiceEnabled: boolean;
-  /** Search radius in kilometers; null uses the data provider default. */
+  /** Search radius stored in km for the API. The settings UI edits this in miles. */
   radiusKm: number | null;
   compassDistanceMiles?: number | null;
   /** Stream the view (camera + HUD) to /cast.html on a laptop over WebRTC. */
@@ -90,7 +90,8 @@ export const DEFAULT_SETTINGS: Settings = {
   castEnabled: false,
 };
 
-export const TRANSIT_SETTINGS: Settings = { ...DEFAULT_SETTINGS, dataMode: 'live', viewMode: 'mobile', voiceEnabled: true, radiusKm: 5, compassDistanceMiles: 1 };
+/** Default search radius is 3 miles (stored as km for bus-service). */
+export const TRANSIT_SETTINGS: Settings = { ...DEFAULT_SETTINGS, dataMode: 'live', viewMode: 'mobile', voiceEnabled: true, radiusKm: 4.828032, compassDistanceMiles: 1 };
 
 const STORAGE_KEY = 'transitlens-settings-v1';
 

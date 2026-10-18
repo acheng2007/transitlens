@@ -1,0 +1,10 @@
+FROM python:3.13-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app/bus-service
+COPY bus-service/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && useradd --system --uid 10001 transit
+COPY bus-service/app ./app
+COPY shared/ /app/shared/
+USER transit
+EXPOSE 8003
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003", "--workers", "1", "--no-access-log"]

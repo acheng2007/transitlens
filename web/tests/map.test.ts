@@ -50,3 +50,20 @@ test('GPS movement rebases cached vehicle distance and bearing', () => {
   assert.ok(Math.abs(moved.bearingDeg - 90) < 0.01);
   assert.equal(bus.distanceKm, 1.609344);
 });
+
+test('rectangular projection preserves compact center-square extent', async () => {
+  const { mapBufferSize } = await import('../src/map-state');
+  assert.deepEqual(mapBufferSize(3), { width: 1024, height: 512 });
+  assert.deepEqual(mapBufferSize(0.2), { width: 512, height: 1024 });
+  const state = { ...createMapState(2.5), center: { lat: 29.6465, lon: -82.3478 } };
+  const point = { lat: 29.65, lon: -82.34 };
+  for (const headingDeg of [null, 0, 90, 359]) {
+    const square = mapPoint(point, { ...state, headingDeg }, 512);
+    const wide = mapPoint(point, { ...state, headingDeg }, 1024, 512);
+    const tall = mapPoint(point, { ...state, headingDeg }, 512, 1024);
+    assert.ok(Math.abs(wide[0] - square[0] - 256) < 1e-9);
+    assert.equal(wide[1], square[1]);
+    assert.equal(tall[0], square[0]);
+    assert.ok(Math.abs(tall[1] - square[1] - 256) < 1e-9);
+  }
+});

@@ -37,6 +37,8 @@ class Network:
         self.attempt_at = float('-inf')
         self.lock = asyncio.Lock()
         self.predictions = {}
+        self.prediction_rows = {}
+        self.prediction_lock = asyncio.Lock()
 
     async def snapshot(self, demo=False):
         if demo:
@@ -70,25 +72,36 @@ class Network:
                                'status': 'stale' if self.cached else 'unavailable'}
             return self.cached
 
-    async def arrivals(self, stop_id, route, direction, demo=False):
+    async def arrivals(self, stop_id, route, direction, demo=False, vehicle_id=None):
         if demo:
             return dict(status='demo', minutes=4, fetchedAt=None, vehicleId=None, label='Scripted arrival, not live')
-        key = (stop_id, route, direction)
+        key = (stop_id, route, direction, vehicle_id)
         cached = self.predictions.get(key)
         if cached and time.monotonic() - cached[0] < 30:
             return cached[1]
         try:
-            rows = await self.rts.request('getpredictions', 'prd', stpid=stop_id, rt=route, top=10)
+            async with self.prediction_lock:
+                raw_key = (stop_id, route)
+                raw = self.prediction_rows.get(raw_key)
+                if raw and time.monotonic() - raw[0] < 30:
+                    rows = raw[1]
+                else:
+                    rows = await self.rts.request('getpredictions', 'prd', stpid=stop_id, rt=route, top=10)
+                    if len(self.prediction_rows) >= 256:
+                        self.prediction_rows.pop(next(iter(self.prediction_rows)))
+                    self.prediction_rows[raw_key] = (time.monotonic(), rows)
             candidates = []
             for row in rows:
                 minutes = 0 if row.get('prdctdn') == 'DUE' else number(row.get('prdctdn'))
-                if str(row.get('rt')) == route and row.get('rtdir') == direction and str(row.get('stpid')) == stop_id and minutes is not None and minutes >= 0:
+                if str(row.get('rt')) == route and row.get('rtdir') == direction and str(row.get('stpid')) == stop_id and minutes is not None and 0 <= minutes <= 1440 and (not vehicle_id or str(row.get('vid')) == vehicle_id):
                     candidates.append((minutes, str(row.get('vid', ''))))
             minutes, vehicle = min(candidates) if candidates else (None, None)
             result = dict(status='available', minutes=minutes, vehicleId=vehicle,
                           fetchedAt=datetime.now(timezone.utc).isoformat(), label='RTS prediction' if minutes is not None else 'No matching arrival prediction')
         except Exception:
             result = dict(status='unavailable', minutes=None, vehicleId=None, fetchedAt=None, label='Arrivals unavailable')
+        if len(self.predictions) >= 512:
+            self.predictions.pop(next(iter(self.predictions)))
         self.predictions[key] = (time.monotonic(), result)
         return result
 
@@ -115,10 +128,12 @@ def find_destination(patterns, query):
         terms = ['hub']
     else:
         terms = [q]
-    return [s for s in stops.values() if any(term and term in clean(s['name']) for term in terms)]
+    matches = [s for s in stops.values() if any(term and all(t in clean(s['name']).split() for t in term.split()) for term in terms)]
+    exact_names = [s for s in matches if clean(s['name']) == q]
+    return exact_names or matches
 
 
-def plan_direct(network, query, lat, lon, vehicles=(), max_walk_km=0.8):
+def plan_direct(network, query, lat, lon, vehicles=(), max_walk_km=0.8, onboard=None):
     patterns = network['patterns']
     destinations = find_destination(patterns, query)
     base = dict(query=query, demo=network['demo'], networkStatus=network['status'],
@@ -132,10 +147,24 @@ def plan_direct(network, query, lat, lon, vehicles=(), max_walk_km=0.8):
     ids = {s['id'] for s in destinations}
     options = []
     for pattern in patterns:
+        position, cumulative = None, None
+        if onboard:
+            if pattern['routeId'] != onboard['route'] or pattern['patternId'] != onboard.get('patternId'):
+                continue
+            from .queries import progress_on_pattern
+            position, cumulative = progress_on_pattern(onboard, pattern)
+            if position is None:
+                continue
         for target in [s for s in pattern['stops'] if s['id'] in ids]:
+            if onboard and cumulative[target['sequence']] <= position + 0.03:
+                continue
             earlier = [s for s in pattern['stops'] if s['sequence'] < target['sequence'] and s['id'] != target['id']]
-            nearby = [(haversine_km(lat, lon, s['lat'], s['lon']), s) for s in earlier]
-            nearby = [(distance, s) for distance, s in nearby if distance <= max_walk_km]
+            if onboard:
+                previous = [s for s in earlier if cumulative[s['sequence']] <= position + 0.03]
+                nearby = [(0, previous[-1])] if previous else []
+            else:
+                nearby = [(haversine_km(lat, lon, s['lat'], s['lon']), s) for s in earlier]
+                nearby = [(distance, s) for distance, s in nearby if distance <= max_walk_km]
             if not nearby:
                 continue
             distance, boarding = min(nearby, key=lambda item: item[0])
@@ -144,8 +173,8 @@ def plan_direct(network, query, lat, lon, vehicles=(), max_walk_km=0.8):
                 patternId=pattern['patternId'], direction=pattern['direction'], boardingStop=boarding,
                 alightingStop=target, walkKm=round(distance, 3),
                 rideStops=len([s for s in pattern['stops'] if boarding['sequence'] < s['sequence'] <= target['sequence']]),
-                overlay=pattern, activeVehicles=sum(v['route'] == pattern['routeId'] for v in vehicles),
-                prediction=None))
+                overlay=pattern, activeVehicles=sum(v['route'] == pattern['routeId'] and v.get('patternId') == pattern['patternId'] for v in vehicles),
+                prediction=None, onboard=bool(onboard)))
     # Retain direction/pattern distinctions; remove alternatives for the same boarding/route/direction.
     options.sort(key=lambda o: (o['walkKm'], o['rideStops']))
     unique = {}

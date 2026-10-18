@@ -205,6 +205,17 @@ class EndpointTests(unittest.TestCase):
         self.assertTrue(demo['demo'])
         self.assertEqual(len(self.calls), calls_before_demo)
 
+    def test_demo_nearby_stops_are_sorted_and_never_query_live_service(self):
+        result = self.get('/api/transit/stops/nearby', lat=29.6465, lon=-82.3478,
+                          radiusKm=5, limit=3, demo=True).json()
+        self.assertTrue(result['demo'])
+        self.assertEqual(result['status'], 'available')
+        self.assertEqual(len(result['stops']), 3)
+        distances = [s['distanceKm'] for s in result['stops']]
+        self.assertEqual(distances, sorted(distances))
+        self.assertTrue(all(0 <= s['bearingDeg'] < 360 for s in result['stops']))
+        self.assertEqual(self.calls, [])
+
     def test_route_pattern_and_stop_lookups(self):
         routes = self.get('/api/transit/routes').json()
         self.assertEqual(routes['status'], 'available')

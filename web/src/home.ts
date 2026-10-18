@@ -7,12 +7,19 @@ import { REITZ_CENTER, startBusFeed, watchPosition } from './buses';
 import type { Bus, BusFeed, Position } from './buses';
 import { busFields } from './format';
 import { normalizeDeg } from './geo';
+import { formatMiles } from './map-state';
 
 const MAX_CARDS = 8;
 const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const cardinal = (deg: number) => CARDINALS[Math.round(normalizeDeg(deg) / 45) % 8];
 
 type LiveState = 'connecting' | 'live' | 'unavailable';
+
+/** Only completed feed states establish service availability. */
+export function homeLiveState(status: string): LiveState {
+  if (/UNAVAILABLE/.test(status)) return 'unavailable';
+  return /(?:^| · )(?:Live RTS · \d+ buses|No nearby buses)(?: · |$)/.test(status) ? 'live' : 'connecting';
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -98,8 +105,9 @@ export function startHome(opts: { dev: boolean; radiusKm: () => number }) {
     const active = feed ?? probe;
     const s = active?.get();
     const status = s?.status ?? '';
-    const unavailable = /UNAVAILABLE/.test(status);
-    const answered = unavailable || /Live RTS|No nearby buses/.test(status);
+    const liveState = homeLiveState(status);
+    const unavailable = liveState === 'unavailable';
+    const answered = liveState === 'live';
     setLive(unavailable ? 'unavailable' : answered ? 'live' : 'connecting', unavailable ? 'RTS unavailable' : answered ? 'Live RTS' : 'Connecting');
     if (!feed) return;
 
@@ -132,7 +140,7 @@ export function startHome(opts: { dev: boolean; radiusKm: () => number }) {
     } else if (answered) {
       body.dataset.state = 'empty';
       emptyTitle.textContent = 'No nearby buses';
-      emptyText.textContent = `No RTS buses are reporting within ${opts.radiusKm()} km right now.`;
+      emptyText.textContent = `No RTS buses are reporting within ${formatMiles(opts.radiusKm())} right now.`;
     } else {
       body.dataset.state = 'locating';
       emptyTitle.textContent = 'Loading live buses…';

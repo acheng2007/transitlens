@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
-import { castSignaling } from './server/cast-signaling';
+import { castSignaling } from './server/cast-signaling.ts';
 
 const SHARED_DIR = fileURLToPath(new URL('../shared', import.meta.url));
 /** Written by `npm run phone` while its HTTPS tunnel is up. */

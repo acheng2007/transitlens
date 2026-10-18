@@ -1,17 +1,31 @@
 // Transit voice capture and playback contracts.
 
+export type SpeechResult = {
+  answer: string;
+  speechId?: string;
+  speechText?: string;
+};
+
+export type SpeechFallbackReason = 'not_configured' | 'unavailable' | 'quota' | 'service' | 'timeout' | 'network' | 'invalid_audio' | 'playback' | 'playback_timeout';
+export type SpeechStatus =
+  | { state: 'preparing'; provider: 'gemini' }
+  | { state: 'playing'; provider: 'gemini' | 'browser' }
+  | { state: 'fallback'; provider: 'browser'; reason: SpeechFallbackReason }
+  | { state: 'cancelled'; provider: null }
+  | { state: 'unavailable'; provider: 'browser' };
+
 export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 export type StartVoiceOptions = {
   /** Transit app supplies a grounded request and validated action dispatcher. */
-  requestAnswer?: (question: string, signal: AbortSignal) => Promise<string>;
+  requestAnswer?: (question: string, signal: AbortSignal) => Promise<string | SpeechResult>;
   /** Freeze gaze context at wake activation, before the user turns their head. */
   onCaptureStart?: () => void;
   onStateChange: (s: VoiceState) => void;
   /** What the user said (the question, after the wake phrase). */
   onPartialTranscript?: (text: string) => void;
-  /** Continue listening briefly after a spoken reply, without another wake phrase. */
-  followUpMs?: number;
+  /** Actual playback and fallback status, separate from answer provenance. */
+  onSpeechStatus?: (status: SpeechStatus) => void;
   onTranscript?: (text: string) => void;
   /** The spoken answer; the app shows it in the HUD. */
   onAnswer: (text: string) => void;
@@ -31,7 +45,7 @@ export type StartVoiceOptions = {
   /** Read answers aloud. Default true. */
   speak?: boolean;
   /**
-   * Optional endpoint that returns the answer as audio; default is browser speech.
+   * Optional endpoint accepting an approved speechId and returning WAV; default is browser speech.
    * Falls back to the browser's speechSynthesis if it fails. Pass null to always use the browser voice.
    */
   ttsEndpoint?: string | null;
@@ -43,6 +57,8 @@ export type StartVoiceOptions = {
 
 export type VoiceHandle = {
   stop: () => void;
+  /** Abort a pending answer or speech while keeping the session available. */
+  cancel: () => void;
   /** Skip the wake phrase and ask this question directly (dev page, tests). */
   ask: (question: string) => Promise<void>;
   /** Enter "listening" as if the wake phrase was heard (head-tilt trigger). */
@@ -55,6 +71,6 @@ export interface Recognizer {
   start(): void;
   stop(): void;
   /** Called with the transcript of the *latest* utterance; `isFinal` once Chrome commits it. */
-  onResult: ((text: string, isFinal: boolean) => void) | null;
+  onResult: ((text: string, isFinal: boolean, utteranceId?: string) => void) | null;
   onError: ((message: string, fatal: boolean) => void) | null;
 }

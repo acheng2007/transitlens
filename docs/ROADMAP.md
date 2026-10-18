@@ -1,5 +1,8 @@
 # TransitLens implementation roadmap
 
+The natural-routing slice now adds grounded bus-to-stop distances, route/next-stop descriptions, direct-trip recommendations, explicit onboard travel, shared map actions, and quota-free refresh of selected bus/stop observations.
+See [natural routing](NATURAL_ROUTING.md) for implemented contracts and remaining limits.
+
 ## Active checkpoint update
 
 The user's current implementation plan selects Live RTS Cardboard with iPhone support before synthetic bus demos.

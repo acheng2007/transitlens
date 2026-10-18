@@ -25,7 +25,8 @@ The current user's instructions take precedence over repository guidance.
 The web app now supports live RTS buses, Cardboard and a full-screen handheld view.
 The Gemini copilot uses Google's server-side GenAI SDK for voice/text questions, route discovery, highlighting, trip choices and stationary boarding-stop guidance.
 An explicit bus-sign request can send one bounded JPEG camera still to Gemini; ordinary questions do not transmit camera images.
-Browser speech recognition/synthesis remains the speech pipeline, with a seven-second follow-up window and typed fallback.
+Browser speech recognition remains the input pipeline, with one question per explicit wake activation and typed fallback.
+Approved Gemini WAV speech covers normal replies with browser synthesis fallback; a fresh wake phrase interrupts playback and starts a new question.
 The network service retrieves ordered RTS patterns and stop-specific predictions, with caching and a shared request budget.
 Direct-trip results distinguish route coverage, active buses and predictions, and label straight-line stop bearing separately from pedestrian navigation.
 Showcase mode uses ten moving synthetic buses on a captured six-route RTS fixture, with explicitly scripted demo arrival times.
