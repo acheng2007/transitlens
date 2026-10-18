@@ -1,5 +1,14 @@
 # TransitLens copilot and showcase verification
 
+
+## Wake-prefixed map controls, October 18, 2026
+
+The local HTTP endpoint reproduced the unsupported-response fallback for `Hey Gemini close the map`, while `close the map` returned a compact-map action.
+Exact controls now accept a leading explicit wake greeting without sending these commands to Gemini.
+The corrected HTTP request returns `set_map_mode` with `compact` through local tools.
+All 110 voice-service tests pass, including wake-prefix punctuation, provider cooldown and rejection of mixed unrelated requests.
+Physical iPhone recognition and the specific transcript that caused the reported failure remain unverified.
+
 ## Split wake phrase regression, October 18, 2026
 
 The user reported no reaction to the wake phrase on iPhone Safari.

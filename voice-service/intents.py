@@ -167,6 +167,8 @@ def normalized(question):
 
 def exact_control(question):
     q = normalized(question)
+    # Typed prompts and speech revisions may retain the explicit wake greeting.
+    q = re.sub(r'^(?:hey|hay|hi|ok|okay|yo)[,\s]+(?:gemini|geminy|jemini|gem\s+in\s+eye)[,\s]+', '', q)
     if q.startswith('please '):
         q = q[7:]
     controls = {

@@ -36,7 +36,8 @@ def test_obvious_off_topic_and_mixed_requests_never_reach_provider_or_transit(mo
 
 
 @pytest.mark.parametrize('question', ['close the map', 'zoom out', 'cancel guidance', 'Please expand the map.',
-    'full size the map', 'make the map bigger', 'show the full map', 'make the map full size'])
+    'full size the map', 'make the map bigger', 'show the full map', 'make the map full size',
+    'Hey Gemini close the map', 'Hey, Gemini, close the map.', 'Okay Gemini please close the map'])
 def test_exact_controls_use_zero_text_calls_and_issue_speech_even_during_text_cooldown(monkeypatch, question):
     monkeypatch.setenv('GEMINI_API_KEY', 'test-placeholder')
     main.text_budget.cooldown('120')
@@ -65,7 +66,7 @@ def test_floating_map_aliases_only_change_mode(monkeypatch, question):
     model.assert_not_awaited()
 
 
-@pytest.mark.parametrize('question', ['close the map and tell a story', 'zoom out then sing', 'highlight route 38 and explain algebra'])
+@pytest.mark.parametrize('question', ['close the map and tell a story', 'Hey Gemini close the map and tell a story', 'zoom out then sing', 'highlight route 38 and explain algebra'])
 def test_mixed_requests_cannot_run_partial_local_commands(question):
     assert exact_control(question) is None
     assert local_intent(question, main.Context()) is None
