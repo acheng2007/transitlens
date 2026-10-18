@@ -1,15 +1,27 @@
 // Phone side of casting: waits for a viewer's offer (via the dev server's /api/cast relay) and
 // answers it with the composited HUD stream. A new offer (viewer reloaded) replaces the old
 // connection, so the laptop can reconnect at any time.
+//
+// Fallback: when the direct WebRTC path can't connect (cellular, or Wi-Fi that isolates devices),
+// the viewer asks for the relay and this uploads JPEG stills of the same frame through the dev
+// server instead. Uploads happen only while a relay viewer is connected and WebRTC is not live.
 
 import { ICE_SERVERS, postJson, waitForIceGathering } from './rtc';
 
 const POLL_MS = 1500;
 const MAX_BITRATE = 2_500_000;
+/** Relay fallback: target frame rate, JPEG quality, and how often to check whether a viewer wants it. */
+const RELAY_FPS = 8;
+const RELAY_QUALITY = 0.55;
+const RELAY_CHECK_MS = 1000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const toJpeg = (canvas: HTMLCanvasElement) =>
+  new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', RELAY_QUALITY));
 
 export type CastPublisher = { stop: () => void };
 
-export function startCastPublisher(stream: MediaStream, onStatus: (status: string) => void): CastPublisher {
+export function startCastPublisher(stream: MediaStream, onStatus: (status: string) => void, frame?: HTMLCanvasElement): CastPublisher {
   let pc: RTCPeerConnection | null = null;
   let lastOfferId = 0;
   let stopped = false;
@@ -66,7 +78,38 @@ export function startCastPublisher(stream: MediaStream, onStatus: (status: strin
     if (!stopped) timer = window.setTimeout(poll, POLL_MS);
   }
 
+  /** Relay fallback loop (see top of file). */
+  async function relay() {
+    let relaying = false;
+    while (!stopped) {
+      const started = performance.now();
+      const direct = pc?.connectionState === 'connected';
+      let wanted = false;
+      try {
+        if (relaying && frame && !direct) {
+          const blob = await toJpeg(frame);
+          if (stopped) return;
+          const res = await fetch('/api/cast/frame', { method: 'POST', body: blob, headers: { 'content-type': 'image/jpeg' }, signal: controller.signal });
+          wanted = (await res.json()).wanted;
+        } else if (!direct) {
+          const res = await fetch('/api/cast/relay', { signal: controller.signal });
+          wanted = (await res.json()).wanted;
+        }
+      } catch {
+        // Network hiccup or stopped: try again next round.
+      }
+      if (stopped) return;
+      if (wanted !== relaying) {
+        relaying = wanted;
+        if (!direct) onStatus(relaying ? 'live (relay)' : 'waiting for viewer');
+      }
+      const interval = relaying ? 1000 / RELAY_FPS : RELAY_CHECK_MS;
+      await sleep(Math.max(0, interval - (performance.now() - started)));
+    }
+  }
+
   poll();
+  if (frame) void relay();
   return {
     stop() {
       stopped = true;

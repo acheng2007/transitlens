@@ -1,5 +1,10 @@
 // Laptop side of casting (/cast.html): offers to receive video, waits for the phone's answer,
 // shows the stream full-window, and can record it to a .webm for the demo video.
+//
+// If the direct peer-to-peer video isn't live within RELAY_AFTER_MS (phone on cellular, or Wi-Fi
+// that isolates devices), it switches to the relay: JPEG stills from the phone via the dev server,
+// drawn into a canvas whose stream feeds the same <video> (so Record keeps working). Direct video
+// takes over again as soon as it connects.
 
 import { ICE_SERVERS, postJson, waitForIceGathering } from './rtc';
 
@@ -14,10 +19,63 @@ const fsBtn = document.getElementById('fs-btn') as HTMLButtonElement;
 
 const ANSWER_POLL_MS = 1000;
 const RECONNECT_MS = 2000;
+const RELAY_AFTER_MS = 6000;
 
 let pc: RTCPeerConnection | null = null;
 let attempt = 0;
 let reconnectTimer = 0;
+let remote: MediaStream | null = null;
+
+// ---- Relay fallback ------------------------------------------------------------
+
+let relayImg: HTMLImageElement | null = null;
+let relayRaf = 0;
+let relayTimer = 0;
+const relayCanvas = document.createElement('canvas');
+relayCanvas.width = 960;
+relayCanvas.height = 720;
+const relayCtx = relayCanvas.getContext('2d')!;
+
+const directLive = () => pc?.connectionState === 'connected';
+
+function startRelay() {
+  if (relayImg || directLive()) return;
+  const img = new Image();
+  relayImg = img;
+  img.src = `/api/cast/stream?t=${Date.now()}`;
+  setStatus('relay · waiting for the phone…');
+  let shown = false;
+  const draw = () => {
+    if (relayImg !== img) return;
+    if (img.naturalWidth) {
+      if (relayCanvas.width !== img.naturalWidth) {
+        relayCanvas.width = img.naturalWidth;
+        relayCanvas.height = img.naturalHeight;
+      }
+      relayCtx.drawImage(img, 0, 0);
+      if (!shown) {
+        shown = true;
+        video.srcObject = relayCanvas.captureStream(24);
+        empty.hidden = true;
+        setStatus('live · relay (no direct connection)', true);
+      }
+    }
+    relayRaf = requestAnimationFrame(draw);
+  };
+  relayRaf = requestAnimationFrame(draw);
+}
+
+function stopRelay() {
+  if (!relayImg) return;
+  relayImg.src = '';
+  relayImg = null;
+  cancelAnimationFrame(relayRaf);
+}
+
+function scheduleRelay() {
+  clearTimeout(relayTimer);
+  relayTimer = window.setTimeout(() => { if (!directLive()) startRelay(); }, RELAY_AFTER_MS);
+}
 
 function setStatus(text: string, live = false) {
   statusEl.textContent = text;
@@ -34,14 +92,22 @@ async function connect() {
   pc = conn;
   conn.addTransceiver('video', { direction: 'recvonly' });
   conn.ontrack = (e) => {
-    video.srcObject = e.streams[0] ?? new MediaStream([e.track]);
-    empty.hidden = true;
+    remote = e.streams[0] ?? new MediaStream([e.track]);
+    if (!relayImg) {
+      video.srcObject = remote;
+      empty.hidden = true;
+    }
   };
   conn.onconnectionstatechange = () => {
     if (pc !== conn) return;
     const s = conn.connectionState;
-    if (s === 'connected') setStatus('live', true);
-    else setStatus(s);
+    if (s === 'connected') {
+      // Direct video won: drop the relay and show the real stream.
+      stopRelay();
+      if (remote) video.srcObject = remote;
+      empty.hidden = true;
+      setStatus('live', true);
+    } else if (!relayImg) setStatus(s);
     // Phone restarted or dropped: make a fresh offer it can pick up.
     if (s === 'failed' || s === 'disconnected' || s === 'closed') {
       reconnectTimer = window.setTimeout(connect, RECONNECT_MS);
@@ -113,7 +179,7 @@ function toggleRecording() {
 // ---- UI ------------------------------------------------------------------------
 
 recBtn.addEventListener('click', toggleRecording);
-reconnectBtn.addEventListener('click', connect);
+reconnectBtn.addEventListener('click', () => { stopRelay(); connect(); scheduleRelay(); });
 fsBtn.addEventListener('click', () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else document.documentElement.requestFullscreen();
@@ -135,3 +201,4 @@ document.addEventListener('keydown', (e) => {
 
 showBar();
 connect();
+scheduleRelay();

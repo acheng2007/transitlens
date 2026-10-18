@@ -9,6 +9,12 @@
 //   GET  /api/cast/answer?id=  ──►  store  ◄── POST /api/cast/answer {id, sdp}
 //
 // Only the most recent offer is kept: a viewer reload simply replaces it and the phone picks it up.
+//
+// Relay fallback, for when the direct peer-to-peer path can't connect (phone on cellular, or Wi-Fi
+// that isolates devices, e.g. campus networks; there is no TURN server). The phone uploads JPEG
+// stills only while a viewer is watching the relay; the viewer reads them as an MJPEG stream:
+//   phone:  GET  /api/cast/relay  -> { wanted }      POST /api/cast/frame (image/jpeg) -> { wanted }
+//   viewer: GET  /api/cast/stream (multipart/x-mixed-replace, one part per frame)
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
@@ -17,6 +23,27 @@ type Session = { id: number; offer: string; answer: string | null };
 
 let latest: Session | null = null;
 let nextId = 1;
+
+/** Relay viewers currently connected to /stream. */
+const relayViewers = new Set<ServerResponse>();
+const MAX_FRAME_BYTES = 2_000_000;
+const BOUNDARY = 'transitlensframe';
+
+function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error('frame too large'));
+        req.destroy();
+      } else chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
 
 function readJson(req: IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -65,6 +92,28 @@ export function castSignaling(): Plugin {
             if (!latest || latest.id !== id) return send(res, 409, { error: 'offer is no longer current' });
             latest.answer = sdp;
             return send(res, 200, { ok: true });
+          }
+          if (url.pathname === '/relay' && req.method === 'GET') {
+            return send(res, 200, { wanted: relayViewers.size > 0 });
+          }
+          if (url.pathname === '/frame' && req.method === 'POST') {
+            const frame = await readBody(req, MAX_FRAME_BYTES);
+            for (const viewer of relayViewers) {
+              viewer.write(`--${BOUNDARY}\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.length}\r\n\r\n`);
+              viewer.write(frame);
+              viewer.write('\r\n');
+            }
+            return send(res, 200, { wanted: relayViewers.size > 0 });
+          }
+          if (url.pathname === '/stream' && req.method === 'GET') {
+            res.writeHead(200, {
+              'content-type': `multipart/x-mixed-replace; boundary=${BOUNDARY}`,
+              'cache-control': 'no-store',
+              connection: 'keep-alive',
+            });
+            relayViewers.add(res);
+            req.on('close', () => relayViewers.delete(res));
+            return;
           }
           if (url.pathname === '/answer' && req.method === 'GET') {
             const id = Number(url.searchParams.get('id'));

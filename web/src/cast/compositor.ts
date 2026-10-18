@@ -10,6 +10,8 @@ const FPS = 24;
 
 export type CastCompositor = {
   stream: MediaStream;
+  /** The composited frame, also uploaded as JPEG stills when the relay fallback is in use. */
+  canvas: HTMLCanvasElement;
   /** Width / height of the cast frame (for computing its visible FOV). */
   aspect: number;
   /**
@@ -55,6 +57,7 @@ export function createCastCompositor(): CastCompositor {
 
   return {
     stream,
+    canvas: out,
     aspect: OUT_W / OUT_H,
     draw(source, timeMs, drawOverlay) {
       if (timeMs - lastDraw < 1000 / FPS - 2) return;

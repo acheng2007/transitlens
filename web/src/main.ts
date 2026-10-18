@@ -441,7 +441,7 @@ function startCasting() {
   const publisher = startCastPublisher(compositor.stream, (s) => {
     castStatus = s;
     if (mode === 'info') renderOverlay();
-  });
+  }, compositor.canvas);
   cast = { compositor, publisher };
 }
 

@@ -288,7 +288,8 @@ function drawJourney(ctx: CanvasRenderingContext2D, w: number, h: number, s: Hud
     });
     if (hint) panelText(ctx, px + pad, y + fs(15), hint, fs(9), T.muted, 600);
   }
-  if (s.assistantSource) sourcePill(ctx, cx, h * 0.33, s.assistantSource.toUpperCase(), s.demo ? T.warning : T.live);
+  // Source label only alongside a trip result (idle "Ready" would just add clutter).
+  if (s.assistantSource && (state.plan || state.guidance)) sourcePill(ctx, cx, h * 0.33, s.assistantSource.toUpperCase(), s.demo ? T.warning : T.live);
 }
 
 /** Radar center (fractions of eye width/height) and radius (fraction of eye width). Kept inward: lens edges blur. */
