@@ -3,8 +3,9 @@
   <h1>TransitLens</h1>
   <p><strong>Look down the street. Find your bus.</strong></p>
   <p>A live transit HUD for Gainesville RTS, with geographic bus markers, an interactive map, and a Gemini voice copilot.</p>
+  <h2><a href="https://transitlens.vodka">Try it live: transitlens.vodka ↗</a></h2>
+  <p>Open the live app on your phone to try the transit HUD, or explore Showcase demo without API keys.</p>
   <p>
-    <a href="https://transitlens.vodka">Live demo</a> ·
     <a href="#quick-start">Quick start</a> ·
     <a href="#try-it">Try it</a> ·
     <a href="#development">Development</a> ·
